@@ -1,6 +1,8 @@
+from __future__ import division
 from gevent import socket
 from functools import partial
 from keyspace import Keyspace
+from hashlib import md5
 
 
 class Node(object):
@@ -21,10 +23,10 @@ class Node(object):
         self.sendto(("localhost", entry_port), "JOIN")
 
     def hash_key(self, key):
-        try:
-            return float(key) / 10.0
-        except ValueError:
-            pass
+        return md5(key).hexdigest()
+
+    def key_to_keyspace(self, key):
+        return int(self.hash_key(key), base=16) / (1 << 128)
 
     def sendto(self, address, message):
         if address:
@@ -33,14 +35,14 @@ class Node(object):
             print message
 
     def query_others(self, query):
-        hashed = self.hash_key(query.split()[1])
+        keyspace = self.key_to_keyspace(query.split()[1])
 
-        if self.left and self.keyspace.lower > hashed:
+        if self.left and self.keyspace.lower > keyspace:
             if self.right:
                 self.sendto(self.left, query)
             else:
                 print "Right neighbor not found!"
-        elif self.keyspace.upper < hashed:
+        elif self.keyspace.upper < keyspace:
             if self.right:
                 self.sendto(self.right, query)
             else:
@@ -70,9 +72,9 @@ class Node(object):
 
         elif query.startswith("GET"):
             key = query.split()[1]
-            hashed = self.hash_key(key)
+            keyspace = self.key_to_keyspace(key)
 
-            if self.keyspace.contains(hashed):
+            if self.keyspace.contains(keyspace):
                 try:
                     answer = "ANSWER %s" % self.hash[key]
                 except KeyError:
@@ -83,9 +85,9 @@ class Node(object):
 
         elif query.startswith("PUT"):
             _, key, value = query.split()
-            hashed = self.hash_key(key)
+            keyspace = self.key_to_keyspace(key)
 
-            if self.keyspace.contains(hashed):
+            if self.keyspace.contains(keyspace):
                 self.hash[key] = value
                 print "Own hash is now %s" % self.hash
                 respond("ANSWER Successfully PUT { %s: %s }." % (key, value))
