@@ -20,6 +20,9 @@ class Keyspace(object):
     def serialize(self):
         return "%s-%s" % (self.lower, self.upper)
 
+    def contains(self, val):
+        return val >= self.lower and val <= self.upper
+
     @classmethod
     def unserialize(self, keyspace):
         return Keyspace(*keyspace.split("-"))
@@ -31,45 +34,68 @@ class Node(object):
         self.socket.bind(("localhost", own_port or 0))  # 0 Chooses random port
         self.port = self.socket.getsockname()[1]
         self.keyspace = keyspace
+        self.hash = {}
+        self.left = None
+        self.right = None
 
     def __str__(self):
         return "node:%s" % self.port
 
     def join_network(self, entry_port):
-        print "%s: JOINing %s" % (self, entry_port)
+        print "Sending JOIN from %s to port %s." % (self, entry_port)
         self.socket.sendto("JOIN", ("localhost", entry_port))
 
-    def query(self, request):
-        query = request[0]
-        sender = request[1]
-        response = None
+    def hash_key(self, key):
+        try:
+            return float(key) / 10.0
+        except ValueError:
+            pass
 
-        print "Received \"%s\" from %s." % (query, sender)
+    def query(self, query, sender=None):
+        if sender:
+            print "Received \"%s\" from %s." % (query, sender)
 
         if query == "JOIN":
-            response = "SETKEYSPACE " + self.subdivide().serialize()
+            response = "SETKEYSPACE " + self.keyspace.subdivide().serialize()
+            self.socket.sendto(response, sender)
+            self.right = sender
             print "Own keyspace is now %s" % self.keyspace
 
+        elif query.startswith("STATE"):
+            print "left: %s" % str(self.left)
+            print "right: %s" % str(self.right)
+            print "hash: %s" % self.hash
+            print "keyspace: %s" % self.keyspace
+            print "port: %s" % self.port
+
         elif query.startswith("SETKEYSPACE "):
+            self.left = sender
             self.keyspace = Keyspace.unserialize(query.split(" ")[1])
             print "Received keyspace: %s." % self.keyspace
 
         elif query.startswith("GET"):
-            arg = query.split()[1]
-            response = "GET: %s." % arg
+            key = query.split()[1]
+            hashed = self.hash_key(key)
+
+            if self.keyspace.contains(hashed):
+                try:
+                    print "Answer: %s" % self.hash[key]
+                except KeyError:
+                    print "Key %s not found!" % key
+            elif self.left and self.keyspace.lower > hashed:
+                print "Need to send this to the left"
+            elif self.right and self.keyspace.upper < hashed:
+                print "Need to send this to the right"
+            else:
+                print "Neighbor doesn't exist?"
 
         elif query.startswith("PUT"):
             _, key, value = query.split()
-            response = "PUT: %s: %s." % (key, value)
+            self.hash[key] = value
+            print "Successfully PUT { %s: %s }." % (key, value)
 
         else:
             print "Unrecognized query \"%s\"." % query
-
-        if response:
-            self.socket.sendto(response, sender)
-
-    def subdivide(self):
-        return self.keyspace.subdivide()
 
 
 def start_first_node():
@@ -80,8 +106,8 @@ def start_first_node():
 
 def start_node(entry_port):
     node = Node()
+    print "Started %s." % node
     node.join_network(entry_port)
-    print "Started %s, now joining." % node
     return node
 
 
@@ -99,7 +125,6 @@ def await_query(node):
 
 
 def await_request(node):
-    print 'Listening on port %s.' % node.port
     return node.socket.recvfrom(1024)  # Buffer size is 1024 bytes
 
 
@@ -108,13 +133,11 @@ request = gevent.spawn(await_request, node)
 
 while True:
     if query.successful():
-        print "Sending user input!"
-        node.socket.sendto(query.value, ("localhost", entry_port))
+        node.query(query.value)
         query = gevent.spawn(await_query, node)
         gevent.sleep(0)
     if request.successful():
-        print "Greenlet exited successfully with", request.value
-        node.query(request.value)
+        node.query(*request.value)
         request = gevent.spawn(await_request, node)
         gevent.sleep(0)
     gevent.sleep(0)
