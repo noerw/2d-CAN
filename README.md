@@ -12,5 +12,5 @@ To start a new node and join it to an existing DHT:
 
 Valid commands:
 
-GET x
-PUT x x
+* `GET {key}`
+* `PUT {key} {value}`
