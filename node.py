@@ -3,6 +3,7 @@ from gevent import socket
 from functools import partial
 from keyspace import Keyspace
 from hashlib import md5
+import commands
 
 
 class Node(object):
@@ -37,12 +38,12 @@ class Node(object):
     def query_others(self, query):
         keyspace = self.key_to_keyspace(query.split()[1])
 
-        if self.left and self.keyspace.lower > keyspace:
-            if self.right:
+        if self.left and self.keyspace >= keyspace:
+            if self.left:
                 self.sendto(self.left, query)
             else:
-                print "Right neighbor not found!"
-        elif self.keyspace.upper < keyspace:
+                print "Left neighbor not found!"
+        elif self.keyspace < keyspace:
             if self.right:
                 self.sendto(self.right, query)
             else:
@@ -50,6 +51,11 @@ class Node(object):
 
     def query(self, query, sender=None):
         respond = partial(self.sendto, sender)
+
+        # {
+        #     "JOIN": commands.join,
+        #     "STATE":
+        # }
 
         if sender:
             print "Received \"%s\" from %s." % (query, sender)
@@ -74,7 +80,7 @@ class Node(object):
             key = query.split()[1]
             keyspace = self.key_to_keyspace(key)
 
-            if self.keyspace.contains(keyspace):
+            if keyspace in self.keyspace:
                 try:
                     answer = "ANSWER %s" % self.hash[key]
                 except KeyError:
@@ -87,7 +93,7 @@ class Node(object):
             _, key, value = query.split()
             keyspace = self.key_to_keyspace(key)
 
-            if self.keyspace.contains(keyspace):
+            if keyspace in self.keyspace:
                 self.hash[key] = value
                 print "Own hash is now %s" % self.hash
                 respond("ANSWER Successfully PUT { %s: %s }." % (key, value))

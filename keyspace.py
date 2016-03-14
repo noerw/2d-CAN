@@ -6,6 +6,15 @@ class Keyspace(object):
     def __str__(self):
         return "(%s, %s)" % (self.lower, self.upper)
 
+    def __le__(self, arg):
+        return self.arg >= self.lower
+
+    def __gt__(self, arg):
+        return self.arg < self.upper
+
+    def __contains__(self, val):
+        return self.lower <= val < self.upper
+
     def subdivide(self):
         upper = self.upper
         midpoint = ((self.upper - self.lower) / 2) + self.lower
@@ -14,9 +23,6 @@ class Keyspace(object):
 
     def serialize(self):
         return "%s-%s" % (self.lower, self.upper)
-
-    def contains(self, val):
-        return val >= self.lower and val <= self.upper
 
     @classmethod
     def unserialize(self, keyspace):
