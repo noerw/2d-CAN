@@ -3,7 +3,8 @@ from gevent import socket
 from functools import partial
 from keyspace import Keyspace
 from hashlib import md5
-import commands
+import json
+# import commands
 
 
 class Node(object):
@@ -11,13 +12,18 @@ class Node(object):
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)  # UDP
         self.socket.bind(("localhost", own_port or 0))  # 0 Chooses random port
         self.port = self.socket.getsockname()[1]
+        print self.port
         self.keyspace = keyspace
         self.hash = {}
-        self.left = None
-        self.right = None
+        self.left_address = None
+        self.right_address = None
 
     def __str__(self):
         return "node:%s" % self.port
+
+    def address(self):
+        print "I'm in address. self.port = %s" % self.port
+        return ('127.0.0.1', self.port)
 
     def join_network(self, entry_port):
         print "Sending JOIN from %s to port %s." % (self, entry_port)
@@ -38,14 +44,14 @@ class Node(object):
     def query_others(self, query):
         keyspace = self.key_to_keyspace(query.split()[1])
 
-        if self.left and self.keyspace >= keyspace:
-            if self.left:
-                self.sendto(self.left, query)
+        if self.left_address and self.keyspace >= keyspace:
+            if self.left_address:
+                self.sendto(self.left_address, query)
             else:
                 print "Left neighbor not found!"
         elif self.keyspace < keyspace:
-            if self.right:
-                self.sendto(self.right, query)
+            if self.right_address:
+                self.sendto(self.right_address, query)
             else:
                 print "Right neighbor not found!"
 
@@ -61,20 +67,39 @@ class Node(object):
             print "Received \"%s\" from %s." % (query, sender)
 
         if query == "JOIN":
-            respond("SETKEYSPACE " + self.keyspace.subdivide().serialize())
-            self.right = sender
+            if not self.left_address:
+                self.left_address = sender
+
+            # import ipdb; ipdb.set_trace()
+            respond("SETKEYSPACE %s" % json.dumps({
+                'keyspace': self.keyspace.subdivide().serialize(),
+                'right_address': self.right_address or self.address()
+            }))
+
+            self.right_address = sender
             print "Own keyspace is now %s" % self.keyspace
 
         elif query.startswith("STATE"):
-            print "left: %s" % str(self.left)
-            print "right: %s" % str(self.right)
+            print "left: %s" % str(self.left_address)
+            print "right: %s" % str(self.right_address)
             print "hash: %s" % self.hash
             print "keyspace: %s" % self.keyspace
             print "port: %s" % self.port
 
         elif query.startswith("SETKEYSPACE"):
-            self.left = sender
-            self.keyspace = Keyspace.unserialize(query.split(" ")[1])
+            self.left_address = sender
+            data = json.loads(query[12:])
+            self.keyspace = Keyspace.unserialize(data['keyspace'])
+            self.right_address = tuple(data['right_address'])
+
+            self.sendto(self.right_address, "SET_ADDRESS %s" % json.dumps({
+                'neighbor': 'left_address',
+                'neighbor_address': self.address()
+            }))
+
+        elif query.startswith("SET_ADDRESS"):
+            data = json.loads(query[12:])
+            setattr(self, data['neighbor'], tuple(data['neighbor_address']))
 
         elif query.startswith("GET"):
             key = query.split()[1]

@@ -5,6 +5,11 @@ from gevent import socket
 from sys import stdin, argv
 
 
+# no ring = prone to failure
+# hangs when key maps to a neighbor that is no longer up
+# 1 input during PUT crashes
+
+
 def start_first_node():
     node = Node(own_port=60000, keyspace=Keyspace(0, 1))
     print "Started new DHT with %s" % node
