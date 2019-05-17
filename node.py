@@ -6,6 +6,14 @@ from hashlib import md5
 import json
 # import commands
 
+from hashlib import sha1
+
+'''
+protocol: "command arg1 arg2" on stdin
+STATE
+PUT key val
+GET key
+'''
 
 class Node(object):
     def __init__(self, own_port=None, keyspace=None):
@@ -30,10 +38,12 @@ class Node(object):
         self.sendto(("localhost", entry_port), "JOIN")
 
     def hash_key(self, key):
-        return md5(key).hexdigest()
+        # strings
+        return sha1(key).hexdigest()
 
     def key_to_keyspace(self, key):
-        return int(self.hash_key(key), base=16) / (1 << 128)
+        # numeric
+        return int(self.hash_key(key), 16)
 
     def sendto(self, address, message):
         if address:
@@ -116,7 +126,8 @@ class Node(object):
 
         elif query.startswith("PUT"):
             _, key, value = query.split()
-            keyspace = self.key_to_keyspace(key)
+            keyspace = self.key_to_keyspace(key) # hashed key
+            print keyspace
 
             if keyspace in self.keyspace:
                 self.hash[key] = value

@@ -11,7 +11,8 @@ from sys import stdin, argv
 
 
 def start_first_node():
-    node = Node(own_port=60000, keyspace=Keyspace(0, 1))
+    keyspaceUpper = 2 ** 160 - 1
+    node = Node(own_port=60000, keyspace=Keyspace(0, keyspaceUpper))
     print "Started new DHT with %s" % node
     return node
 
@@ -52,4 +53,4 @@ while True:
         node.query(*request.value)
         request = gevent.spawn(await_request, node)
         gevent.sleep(0)
-    gevent.sleep(0)
+    gevent.sleep(0) # ?
