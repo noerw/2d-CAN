@@ -11,7 +11,8 @@ from sys import stdin, argv
 
 
 def start_first_node():
-    node = Node(own_port=60000, keyspace=Keyspace(0, 1))
+    keyspace = Keyspace((0, 0), (1, 1))
+    node = Node(own_port=60000, keyspace=keyspace)
     print "Started new DHT with %s" % node
     return node
 

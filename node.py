@@ -17,6 +17,8 @@ class Node(object):
         self.hash = {}
         self.left_address = None
         self.right_address = None
+        self.salt = 'asdndslkf'
+        self.pepper = 'sdfjsdfoiwefslkf'
 
     def __str__(self):
         return "node:%s" % self.port
@@ -33,7 +35,13 @@ class Node(object):
         return md5(key).hexdigest()
 
     def key_to_keyspace(self, key):
-        return int(self.hash_key(key), base=16) / (1 << 128)
+        # keyspace is 2D -> split it
+        hashX = self.hash_key(key + self.salt)
+        hashY = self.hash_key(key + self.pepper)
+        return (
+            int(hashX, base=16) / (1 << 128),
+            int(hashY, base=16) / (1 << 128)
+        )
 
     def sendto(self, address, message):
         if address:
