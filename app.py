@@ -50,7 +50,8 @@ while True:
         query = gevent.spawn(await_query, node)
         gevent.sleep(0)
     if request.successful():
-        node.query(*request.value)
+        queryType, sender = request.value
+        node.query(queryType.decode('utf-8'), sender)
         request = gevent.spawn(await_request, node)
         gevent.sleep(0)
     gevent.sleep(0)

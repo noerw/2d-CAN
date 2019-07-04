@@ -45,7 +45,7 @@ class Node(object):
 
     def sendto(self, address, message):
         if address:
-            self.socket.sendto(message, address)
+            self.socket.sendto(message.encode('utf-8'), address)
         else:
             print (message)
 
