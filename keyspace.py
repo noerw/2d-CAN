@@ -1,3 +1,5 @@
+from ast import literal_eval as make_tuple # needed for deserializing tuples
+
 class Keyspace(object):
     def __init__(self, lower, upper):
         # 2D keyspace: (minx,miny)  (maxx,maxy) tuples
@@ -45,4 +47,6 @@ class Keyspace(object):
 
     @classmethod
     def unserialize(self, keyspace):
-        return Keyspace(*keyspace.split("-"))
+        # parse string as tuple convert to floats
+        lower, upper = keyspace.split('-')
+        return Keyspace(make_tuple(lower), make_tuple(upper))
