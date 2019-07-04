@@ -50,14 +50,14 @@ class Node(object):
             print (message)
 
     def query_others(self, query):
-        keyspace = self.key_to_keyspace(query.split()[1])
+        key_in_keyspace = self.key_to_keyspace(query.split()[1])
 
-        if self.left_address and self.keyspace >= keyspace:
+        if self.left_address and self.keyspace >= key_in_keyspace:
             if self.left_address:
                 self.sendto(self.left_address, query)
             else:
                 print ("Left neighbor not found!")
-        elif self.keyspace < keyspace:
+        elif self.keyspace < key_in_keyspace:
             if self.right_address:
                 self.sendto(self.right_address, query)
             else:
