@@ -6,6 +6,42 @@ from hashlib import md5
 import json
 # import commands
 
+class GridTopology(object):
+    # 2D topology, keeping track of neighbours and their keyspaces
+
+    # ownKeyspace = Keyspace()
+    left   = []
+    right  = []
+    top    = []
+    bottom = []
+
+    def addTo(self, direction, address, keyspace):
+        if direction == 'left':
+            self.left.append((
+                adress,
+                keyspace
+            ))
+        else:
+            raise Exception('not implemented')
+
+    def getDirection(self, point):
+        # compare with self.keyspace
+
+    def getNeighboursForDirection(self, direction):
+        if direction == 'left': return self.left
+        else:                   raise Exception('not implemented')
+
+    def getNeighbourForPoint(self, point):
+        # TODO: search for optimal neighbour (-> routing basically)
+        x, y = point
+
+        direction = self.getDirection(point)
+        neighbours = self.getNeighboursForDirection(direction)
+
+        # TODO: find best neighbour in respective directoin list
+        raise Exception('not implemented')
+
+
 
 class Node(object):
     def __init__(self, own_port=None, keyspace=None):
@@ -15,9 +51,13 @@ class Node(object):
         print (self.port)
         self.keyspace = keyspace
         self.hash = {}
+
+        # FIXME: we also need top, bottom neighbours! And they should be a list!
         self.left_address = None
         self.right_address = None
-        self.salt = 'asdndslkf'
+        self.neighbours = GridTopology() # TODO WIP
+
+        self.salt = 'asdndslkf' # TODO: should be proper randomized? must be shared among nodes? 🤔
         self.pepper = 'sdfjsdfoiwefslkf'
 
     def __str__(self):
@@ -75,6 +115,15 @@ class Node(object):
             print ("Received \"%s\" from %s." % (query, sender))
 
         if query == "JOIN":
+            # TODO: join does not forward to other nodes (needs to provide a (random) point)
+            # if point within own keyspace:
+                # subdivide keyspace
+                # send half of keyspace to new node
+                # inform affected neighbours
+                # update own neighbours
+            # else
+                # route join request to neighbour closest to the point
+
             if not self.left_address:
                 self.left_address = sender
 
