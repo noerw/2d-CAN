@@ -32,7 +32,7 @@ class Node(object):
         self.sendto(("localhost", entry_port), "JOIN")
 
     def hash_key(self, key):
-        return md5(key).hexdigest()
+        return md5(key.encode('utf-8')).hexdigest()
 
     def key_to_keyspace(self, key):
         # keyspace is 2D -> split it
