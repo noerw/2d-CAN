@@ -16,7 +16,7 @@ class Keyspace(object):
         return self.arg < self.upper
 
     def __contains__(self, val):
-        print val, self.lower, self.upper
+        print (val, self.lower, self.upper)
         return self.lower <= val < self.upper
 
     def subdivide(self):

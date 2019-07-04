@@ -13,13 +13,13 @@ from sys import stdin, argv
 def start_first_node():
     keyspace = Keyspace((0, 0), (1, 1))
     node = Node(own_port=60000, keyspace=keyspace)
-    print "Started new DHT with %s" % node
+    print ("Started new DHT with %s" % node)
     return node
 
 
 def start_node(entry_port):
     node = Node()
-    print "Started %s." % node
+    print ("Started %s." % node)
     node.join_network(entry_port)
     return node
 
