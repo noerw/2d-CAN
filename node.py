@@ -66,67 +66,72 @@ class Node(object):
         if sender:
             print "Received \"%s\" from %s." % (query, sender)
 
-        if query == "JOIN":
-            if not self.left_address:
+        try:
+            if query == "JOIN":
+                if not self.left_address:
+                    self.left_address = sender
+
+                # import ipdb; ipdb.set_trace()
+                respond("SETKEYSPACE %s" % json.dumps({
+                    'keyspace': self.keyspace.subdivide().serialize(),
+                    'right_address': self.right_address or self.address()
+                }))
+
+                self.right_address = sender
+                print "Own keyspace is now %s" % self.keyspace
+
+            elif query.startswith("STATE"):
+                print "left: %s" % str(self.left_address)
+                print "right: %s" % str(self.right_address)
+                print "hash: %s" % self.hash
+                print "keyspace: %s" % self.keyspace
+                print "port: %s" % self.port
+
+            elif query.startswith("SETKEYSPACE"):
                 self.left_address = sender
+                data = json.loads(query[12:])
+                self.keyspace = Keyspace.unserialize(data['keyspace'])
+                self.right_address = tuple(data['right_address'])
 
-            # import ipdb; ipdb.set_trace()
-            respond("SETKEYSPACE %s" % json.dumps({
-                'keyspace': self.keyspace.subdivide().serialize(),
-                'right_address': self.right_address or self.address()
-            }))
+                self.sendto(self.right_address, "SET_ADDRESS %s" % json.dumps({
+                    'neighbor': 'left_address',
+                    'neighbor_address': self.address()
+                }))
 
-            self.right_address = sender
-            print "Own keyspace is now %s" % self.keyspace
+            elif query.startswith("SET_ADDRESS"):
+                data = json.loads(query[12:])
+                setattr(self, data['neighbor'], tuple(data['neighbor_address']))
 
-        elif query.startswith("STATE"):
-            print "left: %s" % str(self.left_address)
-            print "right: %s" % str(self.right_address)
-            print "hash: %s" % self.hash
-            print "keyspace: %s" % self.keyspace
-            print "port: %s" % self.port
+            elif query.startswith("GET"):
+                key = query.split()[1]
+                keyspace = self.key_to_keyspace(key)
 
-        elif query.startswith("SETKEYSPACE"):
-            self.left_address = sender
-            data = json.loads(query[12:])
-            self.keyspace = Keyspace.unserialize(data['keyspace'])
-            self.right_address = tuple(data['right_address'])
+                if keyspace in self.keyspace:
+                    try:
+                        answer = "ANSWER %s" % self.hash[key]
+                    except KeyError:
+                        answer = "Key %s not found!" % key
+                    respond(answer)
+                else:
+                    self.query_others(query)
 
-            self.sendto(self.right_address, "SET_ADDRESS %s" % json.dumps({
-                'neighbor': 'left_address',
-                'neighbor_address': self.address()
-            }))
+            elif query.startswith("PUT"):
+                _, key, value = query.split()
+                keyspace = self.key_to_keyspace(key)
 
-        elif query.startswith("SET_ADDRESS"):
-            data = json.loads(query[12:])
-            setattr(self, data['neighbor'], tuple(data['neighbor_address']))
+                if keyspace in self.keyspace:
+                    self.hash[key] = value
+                    print "Own hash is now %s" % self.hash
+                    respond("ANSWER Successfully PUT { %s: %s }." % (key, value))
+                else:
+                    self.query_others(query)
 
-        elif query.startswith("GET"):
-            key = query.split()[1]
-            keyspace = self.key_to_keyspace(key)
+            elif query.startswith("ANSWER"):
+                print "ANSWER: %s." % query.lstrip("ANSWER ")
 
-            if keyspace in self.keyspace:
-                try:
-                    answer = "ANSWER %s" % self.hash[key]
-                except KeyError:
-                    answer = "Key %s not found!" % key
-                respond(answer)
             else:
-                self.query_others(query)
+                print "Unrecognized query \"%s\"." % query
 
-        elif query.startswith("PUT"):
-            _, key, value = query.split()
-            keyspace = self.key_to_keyspace(key)
+        except Exception as err:
+            print ('ERROR -- could not parse query: %s' % err)
 
-            if keyspace in self.keyspace:
-                self.hash[key] = value
-                print "Own hash is now %s" % self.hash
-                respond("ANSWER Successfully PUT { %s: %s }." % (key, value))
-            else:
-                self.query_others(query)
-
-        elif query.startswith("ANSWER"):
-            print "ANSWER: %s." % query.lstrip("ANSWER ")
-
-        else:
-            print "Unrecognized query \"%s\"." % query
