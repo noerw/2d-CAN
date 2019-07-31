@@ -27,5 +27,3 @@ class Keyspace(object):
     @classmethod
     def unserialize(self, keyspace):
         return Keyspace(*keyspace.split("-"))
-
-# class HashKeyspace(Keyspace):
