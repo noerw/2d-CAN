@@ -12,13 +12,13 @@ from sys import stdin, argv
 
 def start_first_node():
     node = Node(own_port=60000, keyspace=Keyspace(0, 1))
-    print "Started new DHT with %s" % node
+    print ("Started new DHT with %s" % node)
     return node
 
 
 def start_node(entry_port):
     node = Node()
-    print "Started %s." % node
+    print ("Started %s." % node)
     node.join_network(entry_port)
     return node
 
@@ -49,7 +49,8 @@ while True:
         query = gevent.spawn(await_query, node)
         gevent.sleep(0)
     if request.successful():
-        node.query(*request.value)
+        queryType, sender = request.value
+        node.query(queryType.decode('utf-8'), sender)
         request = gevent.spawn(await_request, node)
         gevent.sleep(0)
     gevent.sleep(0)

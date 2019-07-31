@@ -12,7 +12,7 @@ class Node(object):
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)  # UDP
         self.socket.bind(("localhost", own_port or 0))  # 0 Chooses random port
         self.port = self.socket.getsockname()[1]
-        print self.port
+        print (self.port)
         self.keyspace = keyspace
         self.hash = {}
         self.left_address = None
@@ -22,38 +22,38 @@ class Node(object):
         return "node:%s" % self.port
 
     def address(self):
-        print "I'm in address. self.port = %s" % self.port
+        print ("I'm in address. self.port = %s" % self.port)
         return ('127.0.0.1', self.port)
 
     def join_network(self, entry_port):
-        print "Sending JOIN from %s to port %s." % (self, entry_port)
+        print ("Sending JOIN from %s to port %s." % (self, entry_port))
         self.sendto(("localhost", entry_port), "JOIN")
 
     def hash_key(self, key):
-        return md5(key).hexdigest()
+        return md5(key.encode('utf-8')).hexdigest()
 
     def key_to_keyspace(self, key):
         return int(self.hash_key(key), base=16) / (1 << 128)
 
     def sendto(self, address, message):
         if address:
-            self.socket.sendto(message, address)
+            self.socket.sendto(message.encode('utf-8'), address)
         else:
-            print message
+            print (message)
 
     def query_others(self, query):
-        keyspace = self.key_to_keyspace(query.split()[1])
+        key_in_keyspace = self.key_to_keyspace(query.split()[1])
 
-        if self.left_address and self.keyspace >= keyspace:
+        if self.left_address and self.keyspace >= key_in_keyspace:
             if self.left_address:
                 self.sendto(self.left_address, query)
             else:
-                print "Left neighbor not found!"
-        elif self.keyspace < keyspace:
+                print ("Left neighbor not found!")
+        elif self.keyspace < key_in_keyspace:
             if self.right_address:
                 self.sendto(self.right_address, query)
             else:
-                print "Right neighbor not found!"
+                print ("Right neighbor not found!")
 
     def query(self, query, sender=None):
         respond = partial(self.sendto, sender)
@@ -64,7 +64,7 @@ class Node(object):
         # }
 
         if sender:
-            print "Received \"%s\" from %s." % (query, sender)
+            print ("Received \"%s\" from %s." % (query, sender))
 
         try:
             if query == "JOIN":
@@ -78,14 +78,14 @@ class Node(object):
                 }))
 
                 self.right_address = sender
-                print "Own keyspace is now %s" % self.keyspace
+                print ("Own keyspace is now %s" % self.keyspace)
 
             elif query.startswith("STATE"):
-                print "left: %s" % str(self.left_address)
-                print "right: %s" % str(self.right_address)
-                print "hash: %s" % self.hash
-                print "keyspace: %s" % self.keyspace
-                print "port: %s" % self.port
+                print ("left: %s" % str(self.left_address))
+                print ("right: %s" % str(self.right_address))
+                print ("hash: %s" % self.hash)
+                print ("keyspace: %s" % self.keyspace)
+                print ("port: %s" % self.port)
 
             elif query.startswith("SETKEYSPACE"):
                 self.left_address = sender
@@ -121,16 +121,16 @@ class Node(object):
 
                 if keyspace in self.keyspace:
                     self.hash[key] = value
-                    print "Own hash is now %s" % self.hash
+                    print ("Own hash is now %s" % self.hash)
                     respond("ANSWER Successfully PUT { %s: %s }." % (key, value))
                 else:
                     self.query_others(query)
 
             elif query.startswith("ANSWER"):
-                print "ANSWER: %s." % query.lstrip("ANSWER ")
+                print ("ANSWER: %s." % query.lstrip("ANSWER "))
 
             else:
-                print "Unrecognized query \"%s\"." % query
+                print ("Unrecognized query \"%s\"." % query)
 
         except Exception as err:
             print ('ERROR -- could not parse query: %s' % err)
