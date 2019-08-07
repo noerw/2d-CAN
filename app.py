@@ -1,24 +1,27 @@
 from node import Node
-from keyspace import Keyspace
 import gevent
 from gevent import socket
 from sys import stdin, argv
-
-
-# no ring = prone to failure
-# hangs when key maps to a neighbor that is no longer up
-# 1 input during PUT crashes
+import randomLocation
+from geohash32 import Geohash
 
 
 def start_first_node():
-    node = Node(own_port=60000, keyspace=Keyspace(0, 1))
-    print ("Started new DHT with %s" % node)
+    geohash32 = Geohash()
+    location = randomLocation.create_location()
+    geohash = geohash32.encodeGeohash(location[0], location[1], 12)
+    geohashbin = geohash32.encodeBinary(location[0], location[1], 2)
+    node = Node(own_port=60000, id=geohashbin, location=location)
+    print("Started new DHT with %s" % node)
     return node
 
 
 def start_node(entry_port):
-    node = Node()
-    print ("Started %s." % node)
+    geohash32 = Geohash()
+    location = randomLocation.create_location()
+    geohashbin = geohash32.encodeBinary(location[0], location[1], 2)
+    node = Node(id=geohashbin, location=location)
+    print("Started %s." % node)
     node.join_network(entry_port)
     return node
 
