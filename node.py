@@ -41,10 +41,12 @@ class Node(object):
     def refine_id(self):
         geohash32 = Geohash()
         done = False
+        to_delete = []
 
         if self.same_id.__len__() > 0:
             if self.same_id.__len__() == 1:
-                for port, same_id in self.same_id:
+                for port in self.same_id:
+                    same_id = self.same_id[port]
                     if len(same_id) == len(self.id):
                         print("Splitted ID, new ID is now %s" % self.id)
                         self.sendto(("localhost", port), "SPLIT %s" % self.id)
@@ -56,8 +58,9 @@ class Node(object):
                 self.id = geohash32.encodeBinary(self.location[0], self.location[1], len(self.id) + 2)
                 print("Refined ID, new ID is now %s" % self.id)
 
-        for port, same_id in self.same_id:
-            if len(same_id) == len(self.id) and same_id == self.same_id:
+        for port in self.same_id:
+            same_id = self.same_id[port]
+            if len(same_id) == len(self.id) and same_id == self.id:
                 self.same_id = {}
                 self.id = geohash32.encodeBinary(self.location[0], self.location[1], len(self.id) + 2)
                 print("Splitted ID, new ID is now %s" % self.id)
@@ -65,10 +68,13 @@ class Node(object):
                 done = True
                 break
 
-            elif len(same_id) > len(self.id) and not same_id[:len(self.id) - 1] == self.same_id:
-                del self.same_id[port]
+            elif len(same_id) >= len(self.id) and not same_id[:len(self.id)] == self.same_id:
+                to_delete.append(port)
 
-        if not done:
+        for port in to_delete:
+            del self.same_id[port]
+
+        if not done and self.same_id.__len__() > 0:
             self.refine_id()
 
     def split(self):
@@ -97,8 +103,6 @@ class Node(object):
     def query(self, query, sender=None):
         respond = partial(self.sendto, sender)
 
-        print(type(sender))
-
         geohash32 = Geohash()
 
         if sender:
@@ -118,8 +122,9 @@ class Node(object):
 
                 # Check through neighbours if id needs to be refined
                 else:
-                    for port, id in self.neighbours:
-                        if len(id) >= len(new_id) and id[len(new_id)] == new_id:
+                    for port in self.neighbours:
+                        id = self.neighbours[port]
+                        if len(id) >= len(new_id) and id[:len(new_id)] == new_id:
                             self.sendto(("localhost", port), "NEW_NODE %s" % sender)
 
                 # Check if own prefix is = new id
@@ -138,7 +143,7 @@ class Node(object):
 
             elif query.startswith("REFINE"):
                 node_port = sender[1]
-                node_id = query[query.find(' ') + 2:]
+                node_id = query[query.find(' ') + 1:]
                 self.same_id[node_port] = node_id
                 self.refine_id()
 
