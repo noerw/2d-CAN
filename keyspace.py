@@ -1,5 +1,7 @@
 from ast import literal_eval as make_tuple # needed for deserializing tuples
 
+from topology import Direction
+
 class Keyspace(object):
     def __init__(self, lower, upper):
         # 2D keyspace: (minx,miny)  (maxx,maxy) tuples
@@ -21,26 +23,36 @@ class Keyspace(object):
         print (val, self.lower, self.upper)
         return self.lower <= val < self.upper
 
-    def subdivide(self):
-        # divide in one dimension, not both!
-        # -> find out wich range is bigger
-        upper = self.upper
+    def midpoint(self):
+        # returns the middle of the keyspace as (x,y) tuple
+        return (
+            (self.upper[0] - self.lower[0]) / 2.0 + self.lower[0],
+            (self.upper[1] - self.lower[1]) / 2.0 + self.lower[1]
+        )
+
+    def largestDimension(self):
         keyrange = [
             self.upper[0] - self.lower[0],
             self.upper[1] - self.lower[1]
         ]
+        return keyrange.index(sorted(keyrange)[-1])
 
-        largestDim = keyrange.index(sorted(keyrange)[-1])
-        if largestDim == 0:
-            midpoint = (keyrange[0] / 2.0 + self.lower[0], self.upper[1])
-            midpointNeighbour = (midpoint[0], self.lower[1])
+    def subdivide(self):
+        # splits the keyspace in half, and returns a keyspace of the remaining half.
+        splitDirection = Direction.EAST if self.largestDimension() == 0 else Direction.SOUTH
+
+        midpoint = self.midpoint()
+        if splitDirection == Direction.EAST:
+            newUpper = (midpoint[0], self.upper[1])
+            newLower = (midpoint[0], self.lower[1])
         else:
-            midpoint = (self.upper[0], keyrange[1] / 2.0 + self.lower[1])
-            midpointNeighbour = (self.lower[0], midpoint[1])
+            newUpper = (self.upper[0], midpoint[1])
+            newLower = (self.lower[0], midpoint[1])
 
-        self.upper = midpoint
+        otherHalf = Keyspace(newLower, self.upper)
+        self.upper = newUpper
 
-        return Keyspace(midpointNeighbour, upper)
+        return otherHalf, splitDirection
 
     def serialize(self):
         return "%s-%s" % (self.lower, self.upper)
