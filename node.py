@@ -15,14 +15,9 @@ class Node(object):
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)  # UDP
         self.socket.bind(("localhost", own_port or 0))  # 0 Chooses random port
         self.port = self.socket.getsockname()[1]
-        print (self.port)
         self.keyspace = keyspace
         self.hash = {}
-
-        # FIXME: we also need top, bottom neighbours! And they should be a list!
-        self.left_address = None
-        self.right_address = None
-        # self.neighbours = GridTopology() # TODO WIP
+        self.neighbours = GridTopology(keyspace)
 
         self.salt = 'asdndslkf' # TODO: should be proper randomized? must be shared among nodes? 🤔
         self.pepper = 'sdfjsdfoiwefslkf'
@@ -57,18 +52,13 @@ class Node(object):
             print (message)
 
     def query_others(self, query):
-        key_in_keyspace = self.key_to_keyspace(query.split()[1])
+        point = self.key_to_keyspace(query.split()[1])
+        address, keyspace = self.neighbours.getNeighbourForPoint(point)
 
-        if self.left_address and self.keyspace >= key_in_keyspace:
-            if self.left_address:
-                self.sendto(self.left_address, query)
-            else:
-                print ("Left neighbor not found!")
-        elif self.keyspace < key_in_keyspace:
-            if self.right_address:
-                self.sendto(self.right_address, query)
-            else:
-                print ("Right neighbor not found!")
+        if address:
+            self.sendto(address, query)
+        else:
+            print ('No neighbour found for %s', point)
 
     def query(self, query, sender=None):
         respond = partial(self.sendto, sender)
@@ -94,45 +84,48 @@ class Node(object):
                 # else
                     # route join request to neighbour closest to the point
 
-                if not self.left_address:
-                    self.left_address = sender
+                senderKeyspace, splitDirection = self.keyspace.subdivide()
+                self.neighbours.addNeighbour(sender, senderKeyspace)
 
-                # import ipdb; ipdb.set_trace()
                 respond("SETKEYSPACE %s" % json.dumps({
-                    'keyspace': self.keyspace.subdivide().serialize(),
-                    'right_address': self.right_address or self.address()
+                    'keyspace': senderKeyspace.serialize(),
+                    # FIXME: how the fuck should those be serialized?
+                    # FIXME: should not include neighbours split direction (west / north), but ourselves instead!
+                    'neighbours': self.neighbours.getNeighbours()
                 }))
 
-                self.right_address = sender
+                # TODO: cleanup old neighbours in split direction (east / south)
+
                 print ("Own keyspace is now %s" % self.keyspace)
 
             elif query.startswith("STATE"):
-                print ("left: %s" % str(self.left_address))
-                print ("right: %s" % str(self.right_address))
+                print ("neighbours: %s" % self.neighbours)
                 print ("hash: %s" % self.hash)
                 print ("keyspace: %s" % self.keyspace)
                 print ("port: %s" % self.port)
 
             elif query.startswith("SETKEYSPACE"):
-                self.left_address = sender
                 data = json.loads(query[12:])
                 self.keyspace = Keyspace.unserialize(data['keyspace'])
-                self.right_address = tuple(data['right_address'])
+                # TODO: initialize GridTopology with data['neighbours']
+                self.neighbours = GridTopology(self.keyspace)
 
-                self.sendto(self.right_address, "SET_ADDRESS %s" % json.dumps({
-                    'neighbor': 'left_address',
-                    'neighbor_address': self.address()
-                }))
+                # FIXME
+                # self.sendto(self.right_address, "SET_ADDRESS %s" % json.dumps({
+                #     'neighbor': 'left_address',
+                #     'neighbor_address': self.address()
+                # }))
 
             elif query.startswith("SET_ADDRESS"):
+                # FIXME
                 data = json.loads(query[12:])
                 setattr(self, data['neighbor'], tuple(data['neighbor_address']))
 
             elif query.startswith("GET"):
                 key = query.split()[1]
-                keyspace = self.key_to_keyspace(key)
+                point = self.key_to_keyspace(key)
 
-                if keyspace in self.keyspace:
+                if point in self.keyspace:
                     try:
                         answer = "ANSWER %s" % self.hash[key]
                     except KeyError:
@@ -143,9 +136,9 @@ class Node(object):
 
             elif query.startswith("PUT"):
                 _, key, value = query.split()
-                keyspace = self.key_to_keyspace(key)
+                point = self.key_to_keyspace(key)
 
-                if keyspace in self.keyspace:
+                if point in self.keyspace:
                     self.hash[key] = value
                     print ("Own hash is now %s" % self.hash)
                     respond("ANSWER Successfully PUT { %s: %s }." % (key, value))
