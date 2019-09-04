@@ -54,4 +54,4 @@ while True:
         node.query(queryType.decode('utf-8'), sender)
         request = gevent.spawn(await_request, node)
         gevent.sleep(0)
-    gevent.sleep(0)
+    gevent.sleep(0.05) # to reduce cpu usage
