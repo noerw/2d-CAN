@@ -1,31 +1,35 @@
 # -*- coding: utf-8 -*-
 
 class Direction(object):
-    north = 'n'
-    west  = 'w'
-    south = 's'
-    east  = 'i'
-    local = 'l'
+    NORTH = 'N'
+    WEST  = 'W'
+    SOUTH = 'S'
+    EAST  = 'E'
+    LOCAL = 'L'
 
 # class GridTopology(Direction):
 class GridTopology(object):
     # 2D topology, keeping track of neighbours and their keyspaces
 
     keyspace = None
-    north = []
-    west  = []
-    south = []
-    east  = []
+
+    neighbours = {
+        Direction.NORTH: [], # tuples of ((ip, port), keyspace)
+        Direction.WEST:  [],
+        Direction.SOUTH: [],
+        Direction.EAST:  [],
+    }
 
     def __init__(self, keyspace):
         self.keyspace = keyspace
 
-    def addNeighbour(self, direction, address, keyspace):
-        if   direction == Direction.north: self.north.append((address, keyspace))
-        elif direction == Direction.west:  self.west.append((address, keyspace))
-        elif direction == Direction.south: self.south.append((address, keyspace))
-        elif direction == Direction.east:  self.east.append((address, keyspace))
-        else: raise Exception('invalid direction "%s"' % direction)
+    def addNeighbour(self, address, keyspace):
+        direction = self.getDirection(keyspace.midpoint())
+        if direction == Direction.LOCAL:
+            raise Exception('invalid direction "%s"' % direction)
+        print ('adding neighbour %s in dir %s' % (address, direction))
+        self.neighbours[direction].append((address, keyspace))
+
 
     def getDirection(self, point):
         # compare with self.keyspace
@@ -36,18 +40,20 @@ class GridTopology(object):
         maxx, maxy = self.keyspace.upper
         x, y = point
 
-        if x < minx:   return Direction.west
-        elif x > maxx: return Direction.east
-        elif y < miny: return Direction.north
-        elif y > maxy: return Direction.south
-        else:          return Direction.local # TODO: should we handle this case like that?
+        if x < minx:   return Direction.WEST
+        elif x > maxx: return Direction.EAST
+        elif y < miny: return Direction.NORTH
+        elif y > maxy: return Direction.SOUTH
+        else:          return Direction.LOCAL # TODO: should we handle this case like that?
 
-    def getNeighboursForDirection(self, direction):
-        if   direction == Direction.north: return self.north
-        elif direction == Direction.west:  return self.west
-        elif direction == Direction.south: return self.south
-        elif direction == Direction.east:  return self.east
-        else: raise Exception('invalid direction "%s"' % direction)
+    def getNeighbours(self, direction=None):
+        if direction:
+            return self.neighbours[direction]
+        else:
+            return self.neighbours[Direction.NORTH]
+            + self.neighbours[Direction.WEST]
+            + self.neighbours[Direction.SOUTH]
+            + self.neighbours[Direction.EAST]
 
     def getNeighbourForPoint(self, point):
         # find best neighbour in respective direction list
@@ -55,21 +61,21 @@ class GridTopology(object):
         x, y = point
 
         direction = self.getDirection(point)
-        if direction == Direction.local:
+        if direction == Direction.LOCAL:
             raise Exception('not implemented')
 
-        neighbours = self.getNeighboursForDirection(direction)
+        neighbours = self.getNeighbours(direction)
         # TODO: handle case were we have no neighbours in a direction?
 
-        bestNeigbour = None
+        bestNeigbour = (None, None)
         minDiff = 999999999999
         for address, keyspace in neighbours:
             minx, miny = keyspace.lower
             maxx, maxy = keyspace.upper
             # finding the optimal neighbour on the other axis
-            if direction in [Direction.west, Diretion.east]:
+            if direction in [Direction.WEST, Direction.EAST]:
                 diff = abs(y < miny)
-            elif direction in [Direction.north, Direction.south]:
+            elif direction in [Direction.NORTH, Direction.SOUTH]:
                 diff = abs(x < minx)
 
             if diff < minDiff:
@@ -77,3 +83,12 @@ class GridTopology(object):
                 bestNeighbour = (address, keyspace)
 
         return bestNeighbour
+
+    def __str__(self):
+        # print number of neigbours
+        return 'N: %i   W: %i   S: %i   E: %i' % (
+            len(self.neighbours[Direction.NORTH]),
+            len(self.neighbours[Direction.WEST]),
+            len(self.neighbours[Direction.SOUTH]),
+            len(self.neighbours[Direction.EAST]),
+        )
