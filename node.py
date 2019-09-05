@@ -20,6 +20,10 @@ class Node(object):
         self.hash = {}
         self.neighbours = GridTopology(keyspace)
 
+        # keeps track of queries that were routed to us but that we passed on,
+        # so that we can pass the answer to the original queryee
+        self.queries = {} # key: query key, value: address of query origin
+
         self.salt = 'asdndslkf' # TODO: should be proper randomized? must be shared among nodes? 🤔
         self.pepper = 'sdfjsdfoiwefslkf'
 
@@ -37,6 +41,8 @@ class Node(object):
         return md5(key.encode('utf-8')).hexdigest()
 
     def key_to_keyspace(self, key):
+        ''' returns a point within the keyspace corresponding to the given key
+        '''
         # keyspace is 2D -> split it
         hashX = self.hash_key(key + self.salt)
         hashY = self.hash_key(key + self.pepper)
@@ -69,28 +75,38 @@ class Node(object):
     def sendto(self, address, message):
         if address:
             self.socket.sendto(message.encode('utf-8'), address)
-        else:
+        else: # this was a local query
             print (message)
 
-    def query_others(self, query):
-        point = self.key_to_keyspace(query.split()[1])
+    def query_others(self, query, origin=None):
+        # query is a GET or PUT query, so second element is always a data key
+        key = query.split()[1]
+        point = self.key_to_keyspace(key)
         address, keyspace = self.neighbours.getNeighbourForPoint(point)
+        print (address, keyspace)
 
         if address:
             self.sendto(address, query)
+            if origin:
+                # FIXME: very simplistic should be a list
+                # -> fails when multiple queries for a key are in flight
+                self.queries[key] = origin
         else:
             print ('No neighbour found for %s', point)
 
     def query(self, query, sender=None):
-        respond = partial(self.sendto, sender)
+        '''
+        query handler. hacky protocol mixed of magic strings and JSON
+        queries can be coming from
 
-        # {
-        #     "JOIN": commands.join,
-        #     "STATE":
-        # }
+        '''
+        respond = partial(self.sendto, sender)
 
         if sender:
             print ("Received \"%s\" from %s." % (query, sender))
+
+        if not query:
+            return
 
         try:
             if query == "JOIN":
@@ -103,7 +119,16 @@ class Node(object):
                 ])
                 neighbours = [(addr, keysp.serialize()) for addr, keysp in neighbours]
                 neighbours.append((self.address(), self.keyspace.serialize()))
+
+                # find content from hashtable that isn't ours anymore
+                content = {}
+                for k, v in list(self.hash.items()):
+                    if not self.key_to_keyspace(k) in self.keyspace:
+                        content[k] = v
+                        del self.hash[k]
+
                 respond("SETKEYSPACE %s" % json.dumps({
+                    'content': content,
                     'keyspace': senderKeyspace.serialize(),
                     'neighbours': neighbours,
                 }))
@@ -117,20 +142,22 @@ class Node(object):
                         (self.address(), self.keyspace.serialize())
                     ]))
 
-                # also removes old neighbours in splitDirection
+                self.neighbours.clearNeighbours([splitDirection]) # get rid of non-adjacent neighbours
                 self.neighbours.addNeighbour(sender, senderKeyspace)
 
             elif query.startswith("STATE"):
-                print ("neighbours: %s" % self.neighbours)
-                print ("hash: %s" % self.hash)
-                print ("keyspace: %s" % self.keyspace)
                 print ("port: %s" % self.port)
+                print ("keyspace: %s" % self.keyspace)
+                print ("neighbours: %s" % self.neighbours)
+                print ("hashtable: %s" % self.hash)
+                print ("query routing: %s" % self.queries)
 
             elif query.startswith("SETKEYSPACE"):
-                data = json.loads(query[12:])
+                data = json.loads(query.lstrip("SETKEYSPACE "))
                 self.keyspace = Keyspace.unserialize(data['keyspace'])
                 neighbours = [(tuple(address), Keyspace.unserialize(keysp)) for address, keysp in data['neighbours']]
                 self.neighbours = GridTopology(self.keyspace, neighbours)
+                self.hash = data['content']
 
                 # notify the passed neighbours about the new state
                 for n in neighbours:
@@ -151,13 +178,13 @@ class Node(object):
                 point = self.key_to_keyspace(key)
 
                 if point in self.keyspace:
-                    try:
-                        answer = "ANSWER %s" % self.hash[key]
-                    except KeyError:
-                        answer = "Key %s not found!" % key
-                    respond(answer)
+                    respond('ANSWER %s' % json.dumps({
+                        'key': key,
+                        'value': self.hash.get(key, None),
+                    }))
+
                 else:
-                    self.query_others(query)
+                    self.query_others(query, sender)
 
             elif query.startswith("PUT"):
                 _, key, value = query.split()
@@ -165,16 +192,27 @@ class Node(object):
 
                 if point in self.keyspace:
                     self.hash[key] = value
-                    print ("Own hash is now %s" % self.hash)
-                    respond("ANSWER Successfully PUT { %s: %s }." % (key, value))
+                    respond('ANSWER %s' % json.dumps({
+                        'key': key,
+                        'value': value,
+                    }))
+                    print ('Own hashtable is now %s' % self.hash)
                 else:
-                    self.query_others(query)
+                    self.query_others(query, sender)
 
             elif query.startswith("ANSWER"):
-                print ("ANSWER: %s." % query.lstrip("ANSWER "))
+                data = json.loads(query.lstrip('ANSWER '))
+                key = data['key']
 
-            elif query == '':
-                pass
+                if key in self.queries:
+                    # this answer is a reply to a query where we just act as router
+                    dest = self.queries[key]
+                    del self.queries[key]
+                    print ('Routing answer to %s:%s' % dest)
+                    self.sendto(dest, query)
+                else:
+                    # this response is for our query.
+                    self.sendto(None, query)
 
             else:
                 print ("Unrecognized query \"%s\"." % query)

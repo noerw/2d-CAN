@@ -73,13 +73,16 @@ class GridTopology(object):
     def getNeighbours(self, directions=None):
         if not directions:
             directions = D.cardinals
-
         return [n for d in directions for n in self.neighbours[d]]
+
+    def clearNeighbours(self, directions=None):
+        if not directions:
+            directions = D.cardinals
+        for d in directions:
+            self.neighbours[d] = []
 
     def getNeighbourForPoint(self, point):
         # find best neighbour in respective direction list
-        # TODO: search for optimal neighbour (-> routing basically)
-        x, y = point
 
         direction = self.getDirection(point)
         if direction == D.LOCAL:
@@ -88,6 +91,7 @@ class GridTopology(object):
         neighbours = self.getNeighbours([direction])
         # TODO: handle case were we have no neighbours in a direction?
 
+        x, y = point
         bestNeigbour = (None, None)
         minDiff = 999999999999
         for address, keyspace in neighbours:
@@ -95,9 +99,9 @@ class GridTopology(object):
             maxx, maxy = keyspace.upper
             # finding the optimal neighbour on the other axis
             if direction in [D.WEST, D.EAST]:
-                diff = abs(y < miny)
+                diff = abs(y - miny)
             elif direction in [D.NORTH, D.SOUTH]:
-                diff = abs(x < minx)
+                diff = abs(x - minx)
 
             if diff < minDiff:
                 minDiff = diff
