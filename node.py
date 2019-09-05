@@ -9,6 +9,7 @@ import json
 from traceback import print_exc
 
 from topology import GridTopology, Direction
+from geohash import Geohash
 
 class Node(object):
     def __init__(self, own_port=None, keyspace=None):
@@ -43,6 +44,27 @@ class Node(object):
             int(hashX, base=16) / (1 << 128), # convert to keyspace [0,1]
             int(hashY, base=16) / (1 << 128)
         )
+
+    def coord_to_keyspace(self, point):
+        '''
+        context: Geohash
+
+        hmmm.. what do we want to achieve here?
+        - translate between geographic and keyspace coords?
+        - translate between hashes and locations?
+        - address content by location?
+
+        we should be able to translate between keyspace and a geohash:
+        each geohash bitpair divides the space just as we divide our keyspace
+        -> longer hash -> smaller keyspace.
+            problem: geohash doesnt encode edges but a single point..
+        -> keyspace is ID of a node -> can be encoded via interleaved coords, if total size of keyspace is given
+            -> neighbour topology can be expressed as DHT? but then we basically have a 2D kademlia?
+        -> content IDs (hash of key) can be assigned to node
+        '''
+
+        x, y = point
+        # TODO
 
     def sendto(self, address, message):
         if address:
