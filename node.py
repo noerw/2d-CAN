@@ -83,12 +83,11 @@ class Node(object):
         key = query.split()[1]
         point = self.key_to_keyspace(key)
         address, keyspace = self.neighbours.getNeighbourForPoint(point)
-        print (address, keyspace)
 
         if address:
             self.sendto(address, query)
             if origin:
-                # FIXME: very simplistic should be a list
+                # FIXME: very simplistic; should be a list
                 # -> fails when multiple queries for a key are in flight
                 self.queries[key] = origin
         else:
@@ -97,7 +96,7 @@ class Node(object):
     def query(self, query, sender=None):
         '''
         query handler. hacky protocol mixed of magic strings and JSON
-        queries can be coming from
+        queries can be coming from other nodes, or from local input (eg stdin)
 
         '''
         respond = partial(self.sendto, sender)

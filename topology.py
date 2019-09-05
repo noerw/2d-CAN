@@ -86,13 +86,15 @@ class GridTopology(object):
 
         direction = self.getDirection(point)
         if direction == D.LOCAL:
-            raise Exception('not implemented')
+            raise Exception('we shouldnt end up here, point is in own keyspace')
 
         neighbours = self.getNeighbours([direction])
-        # TODO: handle case were we have no neighbours in a direction?
+        if not neighbours:
+            # TODO: route in another direction for good luck?
+            raise Exception('no route to %s' % point)
 
         x, y = point
-        bestNeigbour = (None, None)
+        bestNeighbour = (None, None)
         minDiff = 999999999999
         for address, keyspace in neighbours:
             minx, miny = keyspace.lower
