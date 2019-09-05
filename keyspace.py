@@ -11,17 +11,19 @@ class Keyspace(object):
     def __str__(self):
         return "(%s, %s)" % (self.lower, self.upper)
 
-    def __le__(self, arg):
-        # args: (x,y)
-        return self.arg >= self.lower
+    # def __le__(self, arg): # FIXME: is this working as intended?
+    #     # args: (x,y)
+    #     return arg >= self.lower
 
-    def __gt__(self, arg):
-        # args: (x,y)
-        return self.arg < self.upper
+    # def __gt__(self, arg): # FIXME: is this working as intended?
+    #     # args: (x,y)
+    #     return arg < self.upper
 
     def __contains__(self, val):
-        print (val, self.lower, self.upper)
-        return self.lower <= val < self.upper
+        return (
+            self.lower[0] <= val[0] < self.upper[0] and
+            self.lower[1] <= val[1] < self.upper[1]
+        )
 
     def midpoint(self):
         # returns the middle of the keyspace as (x,y) tuple
