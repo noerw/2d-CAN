@@ -5,14 +5,8 @@ from gevent import socket
 from sys import stdin, argv
 
 
-# no ring = prone to failure
-# hangs when key maps to a neighbor that is no longer up
-# 1 input during PUT crashes
-
-
 def start_first_node():
-    keyspace = Keyspace((0, 0), (1, 1))
-    node = Node(own_port=60000, keyspace=keyspace)
+    node = Node(own_port=60000, keyspace=Keyspace())
     print ("Started new DHT with %s" % node)
     return node
 
@@ -20,7 +14,7 @@ def start_first_node():
 def start_node(entry_port):
     node = Node()
     print ("Started %s." % node)
-    node.join_network(entry_port)
+    node.join_network(entry_port) # FIXME: should exit if we don't get a response
     return node
 
 
@@ -44,14 +38,18 @@ def await_request(node):
 query = gevent.spawn(await_query, node)
 request = gevent.spawn(await_request, node)
 
-while True:
-    if query.successful():
-        node.query(query.value)
-        query = gevent.spawn(await_query, node)
-        gevent.sleep(0)
-    if request.successful():
-        queryType, sender = request.value
-        node.query(queryType.decode('utf-8'), sender)
-        request = gevent.spawn(await_request, node)
-        gevent.sleep(0)
-    gevent.sleep(0.05) # to reduce cpu usage
+try:
+    while True:
+        if query.successful():
+            node.query(query.value)
+            query = gevent.spawn(await_query, node)
+            gevent.sleep(0)
+        if request.successful():
+            queryType, sender = request.value
+            node.query(queryType.decode('utf-8'), sender)
+            request = gevent.spawn(await_request, node)
+            gevent.sleep(0)
+        gevent.sleep(0.05) # to reduce cpu usage
+except KeyboardInterrupt:
+    # TODO: handle network leave
+    exit(0)

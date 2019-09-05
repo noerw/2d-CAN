@@ -6,7 +6,7 @@ class Geohash(object):
     to a BASE32 string.
     Coordinates are interleaved, meaning that the BASE32 encoding can be
     truncated and still give valid coordinates, but with less spatial accuracy.
-    Inspired by geohash.org
+    Inspired by geohash.org; Ported implementation from https://developer-should-know.tumblr.com/post/87283491372/geohash-encoding-and-decoding-algorithm
     '''
 
     def divideRangeByValue(value, valRange):

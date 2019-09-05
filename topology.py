@@ -57,16 +57,17 @@ class GridTopology(object):
     def getDirection(self, point):
         # compare with self.keyspace
         # if we're out of bounds both on x and y, we move on x first
-        # TODO: improve this logic by preferring larger nodes first,
-        # as they know more neighbours, reducing hops
+        # TODO: improve this logic by preferring larger nodes first, as they
+        # know more neighbours, reducing hops. also check neighbours keyspace,
+        # maybe they own the point!
         minx, miny = self.keyspace.lower
         maxx, maxy = self.keyspace.upper
         x, y = point
 
         if x < minx:   return D.WEST
         elif x > maxx: return D.EAST
-        elif y < miny: return D.NORTH
-        elif y > maxy: return D.SOUTH
+        elif y < miny: return D.SOUTH
+        elif y > maxy: return D.NORTH
         else:          return D.LOCAL # TODO: should we handle this case like that?
 
     def getNeighbours(self, directions=None):
@@ -105,10 +106,10 @@ class GridTopology(object):
         return bestNeighbour
 
     def __str__(self):
-        # print number of neigbours
-        return 'N: %i   W: %i   S: %i   E: %i' % (
-            len(self.neighbours[D.NORTH]),
-            len(self.neighbours[D.WEST]),
-            len(self.neighbours[D.SOUTH]),
-            len(self.neighbours[D.EAST]),
+        # print ports of neigbours
+        return 'N: %s   W: %s   S: %s   E: %s' % (
+            [n[0][1] for n in self.neighbours[D.NORTH]],
+            [n[0][1] for n in self.neighbours[D.WEST]],
+            [n[0][1] for n in self.neighbours[D.SOUTH]],
+            [n[0][1] for n in self.neighbours[D.EAST]],
         )

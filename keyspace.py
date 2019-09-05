@@ -1,23 +1,26 @@
-from ast import literal_eval as make_tuple # needed for deserializing tuples
+import json
 
 from topology import Direction
 
+FULL_KEYSPACE_LOWER = (0, 0)
+FULL_KEYSPACE_UPPER = (1, 1)
+# FULL_KEYSPACE_LOWER = (-180, -90) # FIXME: see constructor NOTE
+# FULL_KEYSPACE_UPPER = (180, 90)
+
 class Keyspace(object):
-    def __init__(self, lower, upper):
-        # 2D keyspace: (minx,miny)  (maxx,maxy) tuples
+    def __init__(self, lower=FULL_KEYSPACE_LOWER, upper=FULL_KEYSPACE_UPPER):
+        '''
+        2D keyspace: (minx,miny)  (maxx,maxy) tuples.
+        NOTE: both dimensions should have same size, otherwise alternating
+        split direction is not guaranteed!
+
+        TODO: we should be able to translate a keyspace to geohash-ish representation
+        '''
         self.lower = lower
         self.upper = upper
 
     def __str__(self):
         return "(%s, %s)" % (self.lower, self.upper)
-
-    # def __le__(self, arg): # FIXME: is this working as intended?
-    #     # args: (x,y)
-    #     return arg >= self.lower
-
-    # def __gt__(self, arg): # FIXME: is this working as intended?
-    #     # args: (x,y)
-    #     return arg < self.upper
 
     def __contains__(self, val):
         return (
@@ -41,7 +44,7 @@ class Keyspace(object):
 
     def subdivide(self):
         # splits the keyspace in half, and returns a keyspace of the remaining half.
-        splitDirection = Direction.EAST if self.largestDimension() == 0 else Direction.SOUTH
+        splitDirection = Direction.EAST if self.largestDimension() == 0 else Direction.NORTH
 
         midpoint = self.midpoint()
         if splitDirection == Direction.EAST:
@@ -57,10 +60,10 @@ class Keyspace(object):
         return otherHalf, splitDirection
 
     def serialize(self):
-        return "%s-%s" % (self.lower, self.upper)
+        # return "%s|%s" % (self.lower, self.upper)
+        return json.dumps((self.lower, self.upper))
 
     @classmethod
-    def unserialize(self, keyspace):
-        # parse string as tuple convert to floats
-        lower, upper = keyspace.split('-')
-        return Keyspace(make_tuple(lower), make_tuple(upper))
+    def unserialize(self, keyspaceString):
+        lower, upper = json.loads(keyspaceString)
+        return Keyspace(lower, upper)
