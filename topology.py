@@ -37,12 +37,22 @@ class GridTopology(object):
                 self.addNeighbour(n[0], n[1])
 
     def addNeighbour(self, address, keyspace):
-        direction = self.getDirection(keyspace.midpoint())
+        midpoint = keyspace.midpoint()
+        direction = self.getDirection(midpoint)
         if direction == D.LOCAL:
             print ('can\'t add neighbour; keyspace overlaps (%s)' % keyspace.serialize())
         else:
+            ns = self.neighbours[direction]
+
+            # check overlap with existing neighbours. if overlapping, remove old neighbour.
+            for i, (addr, keysp) in enumerate(ns):
+                if midpoint in keysp:
+                    print ('dropping old neighbour %s at %s' % (addr, keysp))
+                    del ns[i]
+
+            # TODO: for robustness, we should check that neighbours are actually adjacent to our keyspace?
             print ('adding neighbour %s in dir %s' % (address, direction))
-            self.neighbours[direction].append((address, keyspace))
+            ns.append((address, keyspace))
 
     def getDirection(self, point):
         # compare with self.keyspace

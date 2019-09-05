@@ -26,7 +26,6 @@ class Node(object):
         return "node:%s" % self.port
 
     def address(self):
-        print ("I'm in address. self.port = %s" % self.port)
         return ('127.0.0.1', self.port)
 
     def join_network(self, entry_port):
@@ -73,30 +72,31 @@ class Node(object):
 
         try:
             if query == "JOIN":
-                # TODO: join does not forward to other nodes (needs to provide a (random) point)
-                # or should we allow a stateless GET, so the joining node finds the respective node prior to joining?
-
-                # if point within own keyspace:
-                    # subdivide keyspace
-                    # send half of keyspace to new node
-                    # inform affected neighbours
-                    # update own neighbours
-                # else
-                    # route join request to neighbour closest to the point
-
                 senderKeyspace, splitDirection = self.keyspace.subdivide()
-                self.neighbours.addNeighbour(sender, senderKeyspace)
+                print ("Own keyspace is now %s" % self.keyspace)
 
+                # pass ourselves and all our neighbours to the new node, except for the opposite splitDirection
+                neighbours = self.neighbours.getNeighbours([
+                    d for d in Direction.cardinals if d != -splitDirection
+                ])
+                neighbours = [(addr, keysp.serialize()) for addr, keysp in neighbours]
+                neighbours.append((self.address(), self.keyspace.serialize()))
                 respond("SETKEYSPACE %s" % json.dumps({
                     'keyspace': senderKeyspace.serialize(),
-                    # FIXME: how the fuck should those be serialized?
-                    # FIXME: should not include neighbours split direction (west / north), but ourselves instead!
-                    'neighbours': self.neighbours.getNeighbours()
+                    'neighbours': neighbours,
                 }))
 
-                # TODO: cleanup old neighbours in split direction (east / south)
+                # notify our neighbours of our changed keyspace
+                neighbours = self.neighbours.getNeighbours([
+                    d for d in Direction.cardinals if d != splitDirection
+                ])
+                for addr, keysp in neighbours:
+                    self.sendto(addr, 'UPDATE_NEIGHBOURS %s' % json.dumps([
+                        (self.address(), self.keyspace.serialize())
+                    ]))
 
-                print ("Own keyspace is now %s" % self.keyspace)
+                # also removes old neighbours in splitDirection
+                self.neighbours.addNeighbour(sender, senderKeyspace)
 
             elif query.startswith("STATE"):
                 print ("neighbours: %s" % self.neighbours)
@@ -107,19 +107,22 @@ class Node(object):
             elif query.startswith("SETKEYSPACE"):
                 data = json.loads(query[12:])
                 self.keyspace = Keyspace.unserialize(data['keyspace'])
-                # TODO: initialize GridTopology with data['neighbours']
-                self.neighbours = GridTopology(self.keyspace)
+                neighbours = [(tuple(address), Keyspace.unserialize(keysp)) for address, keysp in data['neighbours']]
+                self.neighbours = GridTopology(self.keyspace, neighbours)
 
-                # FIXME
-                # self.sendto(self.right_address, "SET_ADDRESS %s" % json.dumps({
-                #     'neighbor': 'left_address',
-                #     'neighbor_address': self.address()
-                # }))
+                # notify the passed neighbours about the new state
+                for n in neighbours:
+                    addr, keysp = n
+                    if addr == sender: continue
 
-            elif query.startswith("SET_ADDRESS"):
-                # FIXME
-                data = json.loads(query[12:])
-                setattr(self, data['neighbor'], tuple(data['neighbor_address']))
+                    self.sendto(addr, 'UPDATE_NEIGHBOURS %s' % json.dumps([
+                        (self.address(), self.keyspace.serialize()),
+                    ]))
+
+            elif query.startswith("UPDATE_NEIGHBOURS"): # replaces SET_ADDRESS
+                neighbours = [(tuple(addr), Keyspace.unserialize(keysp)) for addr, keysp in json.loads(query[18:])]
+                for n in neighbours:
+                    self.neighbours.addNeighbour(n[0], n[1])
 
             elif query.startswith("GET"):
                 key = query.split()[1]
@@ -156,12 +159,3 @@ class Node(object):
 
         except Exception as err:
             print_exc()
-
-'''
-# z-order <-> binary tree relationship
-- until 4 bits: one neighbour in each branch, going one level up each
--
-
-# z-order <-> de-briujn
-
-'''
