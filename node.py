@@ -8,7 +8,8 @@ from hashlib import md5
 import json
 from traceback import print_exc
 
-from topology import GridTopology, Direction
+from topology import GridTopology
+from direction import Direction
 from geohash import Geohash
 
 class Node(object):
@@ -150,6 +151,16 @@ class Node(object):
                 print ("neighbours: %s" % self.neighbours)
                 print ("hashtable: %s" % self.hash)
                 print ("query routing: %s" % self.queries)
+
+                arg = query.lstrip('STATE ')
+                # visualize via matplotlib
+                if arg == 'VIZ':
+                    plt = self.neighbours.visualize()
+                    for k,v in self.hash.items():
+                        x,y = self.key_to_keyspace(k)
+                        plt.plot(x,y)
+                        plt.annotate('%s:%s' % (k,v), (x, y))
+                    plt.show() # FIXME: integrate with gevent to avoid blocking?
 
             elif query.startswith("SETKEYSPACE"):
                 data = json.loads(query.lstrip("SETKEYSPACE "))

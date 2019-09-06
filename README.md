@@ -34,3 +34,4 @@ python app.py {entry_port}
 * `GET {key}`
 * `PUT {key} {value}`
 * `STATE`
+* `STATE VIZ`

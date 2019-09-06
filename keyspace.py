@@ -1,6 +1,6 @@
 import json
 
-from topology import Direction
+from direction import Direction
 
 FULL_KEYSPACE_LOWER = (0, 0)
 FULL_KEYSPACE_UPPER = (1, 1)
