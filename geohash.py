@@ -9,7 +9,14 @@ class Geohash(object):
     Inspired by geohash.org; Ported implementation from https://developer-should-know.tumblr.com/post/87283491372/geohash-encoding-and-decoding-algorithm
     '''
 
+    LAT_RANGE = (-90.0, 90.0)
+    LON_RANGE = (-180.0, 180.0)
+
     def divideRangeByValue(value, valRange):
+        '''
+        Splits `valRange` in half (in place) so that `value` is within that range.
+        Returns 1 if the upper half was chosen, 0 for the lower half.
+        '''
         mid = Geohash.middle(valRange)
         if value >= mid:
             valRange[0] = mid
@@ -28,50 +35,108 @@ class Geohash(object):
     def middle(valRange):
         return (valRange[0] + valRange[1]) / 2.0
 
-    def encode(latitude, longitude, precision):
-        ''' precision is number of resulting BASE32 characters
+    def intToBase32(val):
+        ''' convert an LSB-first integer to base32 encoding
         '''
-        latRange = [-90.0, 90.0]
-        lonRange = [-180.0, 180.0]
-        isEven = True
-        bit = 0
-        base32CharIndex = 0
-        geohash = ''
+        result = ''
+        bitmask = 0b11111 # (one base32 char encodes 5 bit)
+        i = 0
+        while val:
+            masked = (bitmask & val) >> (5 * i) # mask 5 bits of the hash
+            val &= ~bitmask                     # zero out the processed bits (loop termination)
+            bitmask <<= 5                       # mask the next 5 bits
+            i += 1
 
-        while len(geohash) < precision:
-            if isEven:
-                base32CharIndex = (base32CharIndex << 1) | Geohash.divideRangeByValue(longitude, lonRange)
+            base32Index = 0                     # reverse bits in groups of 5, as they are LSB-first
+            for k in range(5):
+                bitK = (masked & (1 << k)) >> k
+                base32Index |= bitK << (4 - k)
+
+            result += BASE_32[base32Index]      # convert to BASE32
+
+        return result
+
+    def base32ToInt(geohash):
+        ''' convert a base32 string to LSB-first integer
+        '''
+        bitsDecoded = 0
+        result = 0
+        for char in geohash:
+            base32CharIndex = BASE_32.index(char)
+            for i in [4,3,2,1,0]: # 5 bits per BASE32 character, start with MSB
+                bit = (base32CharIndex & (1 << i)) >> i # extract bit
+                bit <<= bitsDecoded
+                result |= bit
+                bitsDecoded += 1
+        return result
+
+    def encodeBase32(lat, lon, length):
+        hashNumeric = Geohash.encodeBits(lat, lon, length * 5)
+        return Geohash.intToBase32(hashNumeric)
+
+    def encodeBits(lat, lon, precision):
+        '''
+        encodes a coordinate pair into `precision` interleaved bits
+        returns a LSB-first integer.
+        max precision is 128 bits, afterwards we're overflowing
+        '''
+        lonRange = list(Geohash.LON_RANGE) # we modify the range, so make a copy
+        latRange = list(Geohash.LAT_RANGE)
+        bitsEncoded = 0
+        geohash = 0
+
+        while bitsEncoded < precision:
+            if bitsEncoded % 2 == 0: # even bit
+                bit = Geohash.divideRangeByValue(lon, lonRange)
             else:
-                base32CharIndex = (base32CharIndex << 1) | Geohash.divideRangeByValue(latitude, latRange)
+                bit = Geohash.divideRangeByValue(lat, latRange)
 
-            isEven = not isEven
-
-            if bit < 4:
-                bit += 1
-            else:
-                geohash += BASE_32[base32CharIndex]
-                bit = 0
-                base32CharIndex = 0
+            # geohash = (geohash << 1) | bit # MSB first
+            geohash |= bit << bitsEncoded  # LSB first
+            bitsEncoded += 1
 
         return geohash
 
-    def decode(geohash):
-        latRange = [-90.0, 90.0]
-        lonRange = [-180.0, 180.0]
-        isEvenBit = True
+    def encodeRangeBits(rangeMin, rangeMax):
+        # TODO: also support encoding of a range
+        pass
 
-        for char in geohash:
-            base32CharIndex = BASE_32.index(char)
-            for j in [4,3,2,1,0]: # 5 bits per BASE32 character
-                if isEvenBit:
-                    Geohash.divideRangeByBit((base32CharIndex >> j) & 1, lonRange)
-                else:
-                    Geohash.divideRangeByBit((base32CharIndex >> j) & 1, latRange)
-                isEvenBit = not isEvenBit
+    def decodeBits(geohash, precision=None):
+        lonRange = list(Geohash.LON_RANGE) # we modify the range, so make a copy
+        latRange = list(Geohash.LAT_RANGE)
+        bitsDecoded = 0
 
+        # FIXME problem: we don't know when all bits are processed; we are
+        # stopping when no more bits are set, and we processed an even count.
+        # precision could actually be higher, when the remaining bits are all 0,
+        # but we don't know about that... with base32 we also have that issue (I
+        # think?), even if the blocksize (5) is known
+        while geohash or bitsDecoded % 2 != 0:
+            if precision and bitsDecoded >= precision:
+                break
+
+            bit = geohash & 1   # extract bit
+            geohash &= ~1       # clear bit
+            geohash >>= 1       # go for the next bit
+
+            if bitsDecoded % 2 == 0:
+                Geohash.divideRangeByBit(bit, lonRange)
+            else:
+                Geohash.divideRangeByBit(bit, latRange)
+
+            bitsDecoded += 1
+
+        # TODO: allow to return either point or range
         return [Geohash.middle(latRange), Geohash.middle(lonRange)]
+
+    def decode(geohash, precision = None):
+        if type(geohash) == str:
+            precision = len(geohash) * 5
+            geohash = Geohash.base32ToInt(geohash)
+
+        return Geohash.decodeBits(geohash, precision)
 
 
 def test():
-    assert "u4pruydqqvj8" == Geohash.encode(57.64911, 10.40744, 12)
+    assert "u4pruydqqvj8" == Geohash.encodeBase32(57.64911, 10.40744, 12)
     print(Geohash.decode("u4pruydqqvj8"))
