@@ -124,7 +124,7 @@ class GridTopology(object):
 
         for addr, keyspace in self.getNeighbours():
             ax.add_patch(keyspaceToRect(keyspace))
-            ax.annotate(str(addr), keyspace.midpoint(), c='w', weight='bold',
+            ax.annotate(str(addr), keyspace.midpoint(), color='w', weight='bold',
                         fontsize=6, ha='center', va='center')
 
         ax.add_patch(keyspaceToRect(self.keyspace, 'red'))
