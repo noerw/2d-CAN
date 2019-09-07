@@ -2,32 +2,78 @@ from direction import D
 
 class ZCurve(object):
     '''
-    Operations on a Z-Order Curve in 2D
-    https://en.wikipedia.org/wiki/Z-order_curve
-    https://en.wikipedia.org/wiki/Moser%E2%80%93de_Bruijn_sequence
-
-    TODO: This encodes a single curve. When integrating with geohash / topology,
-      we'll need a representation considering the recursive nature of the curve.
-      For this, we need to know the depth, which is unreliable here, as z-values
-      can have a leading 0. Encoding as bitstring would help?
-
-    TODO: Make this objectoriented with a state (value & depth?), where parent()
-      etc return a new ZCurve(z) ?
+    Represents a position on a Z-Order Curve in 2D                    0 - 1
+    https://en.wikipedia.org/wiki/Z-order_curve                         /
+    https://en.wikipedia.org/wiki/Moser%E2%80%93de_Bruijn_sequence    2 - 3
     '''
 
-    BITMASK_EVEN = 0xaaaaaaaa # 0b10101010101010101010101010101010 (32 bit)
-    BITMASK_ODD  = 0x55555555 # 0b01010101010101010101010101010101 (32 bit)
+    EVENBITS = 0xaaaaaaaa # 0b10101010101010101010101010101010 (32 bit)
+    ODDBITS  = 0x55555555 # 0b01010101010101010101010101010101 (32 bit)
 
-    def z(x, y):
-        ''' returns debruijn[x] + 2*debruijn[y], where x, y are indices to the moser-debruijn sequence
+    z = 0
+    depth = 0
+
+    def __init__(self, z=0, depth=1):
         '''
+        `z`      is the position on the z-order curve.
+        `depth`  is the recursion depth of the curve.
+            A ZCurve can have `4**depth` elements
+        '''
+        if z > 4 ** depth - 1:
+            raise Exception('z-value %i does not exist on depth level %i' % (z, depth))
+
+        self.z = z
+        self.depth = depth
+
+    def fromXY(xy, depth):
+        '''
+        Constructs a ZCurve instance from a x,y pair, where x,y are indices to
+        the moser-debruijn sequence, so z = debruijn[x] + 2*debruijn[y]
+        '''
+        x, y = xy
+        if x >= 2 ** depth or y >= 2 ** depth:
+            raise Exception('coordinate %s does not exist on depth level %i' % (xy, depth))
+
         # interleave bits https://graphics.stanford.edu/~seander/bithacks.html#InterleaveTableObvious
         z = 0
         for i in range(32):
             z |= (x & 1 << i) << i | (y & 1 << i) << (i + 1)
-        return z
 
-    def xy(z):
+        return ZCurve(z, depth)
+
+    def fromBitstring(bitstring):
+        if len(bitstring) % 2 != 0:
+            raise Exception('len(bitstring) must be multiple of 2!')
+        depth = int(len(bitstring) / 2)
+        z = int(bitstring, base=2)
+        return ZCurve(z, depth)
+
+    def __str__(self):
+        # encode as bitstring
+        res = ''
+        for i in range(self.depth * 2):
+            bit = (self.z & (1 << i)) >> i
+            res += str(bit)
+        return res[::-1] # reverse, MSB first
+
+    def __add__(self, other):
+        if type(other) is ZCurve:
+            if other.depth != self.depth:
+                deeper = other if self.depth < other.depth else self
+                higher = self  if self.depth < other.depth else other
+                return deeper + higher.children(deeper.depth - higher.depth)[0]
+
+            # FIXME: torus-style wrap-around fails
+            # https://en.wikipedia.org/wiki/Z-order_curve#Coordinate_values adapted to 32bit
+            z = (
+                ((self.z | self.EVENBITS) + (other.z & self.ODDBITS) & self.ODDBITS) |
+                ((self.z | self.ODDBITS) + (other.z & self.EVENBITS) & self.EVENBITS)
+            )
+            return ZCurve(z, self.depth)
+
+        raise Exception('addition for type %s not implemented' % type(other))
+
+    def xy(self):
         ''' returns indices to the debruijn sequence
         '''
         x = 0
@@ -35,48 +81,40 @@ class ZCurve(object):
         # de-interleave bits
         for i in range(32):
             if i % 2 == 0:
-                x |= (z & 1 << i) >> int(i / 2)
+                x |= (self.z & 1 << i) >> int(i / 2)
             else:
-                y |= (z & 1 << i) >> int(i / 2 + 1)
+                y |= (self.z & 1 << i) >> int(i / 2 + 1)
         return x, y
 
-    def debruijn(x, y, z=None):
+    def debruijn(self):
         ''' given indices to the moser-debuijn sequence, returns debruijn values
         '''
-        if z is None:
-            z = ZCurve.z(x, y)
-        xDebruijn = z & BITMASK_ODD
-        yDebruijn = z & BITMASK_EVEN
+        xDebruijn = self.z & self.ODDBITS
+        yDebruijn = self.z & self.EVENBITS
         return xDebruijn, yDebruijn
 
-    def neighbours(z):
+    def neighbours(self):
+        # FIXME: torus-style wrap-around gives incorrect results for
+        #   `self.depth != int.bit_length(self.z | self.BITMASK_EVEN)` !
+
         # https://en.wikipedia.org/wiki/Z-order_curve#Coordinate_values adapted to 32bit
         return {
-            D.NORTH: ((z & BITMASK_EVEN) - 1 & BITMASK_EVEN) | (z & BITMASK_ODD),
-            D.SOUTH: ((z | BITMASK_ODD)  + 1 & BITMASK_EVEN) | (z & BITMASK_ODD),
-            D.WEST:  ((z & BITMASK_ODD)  - 1 & BITMASK_ODD) | (z & BITMASK_EVEN),
-            D.EAST:  ((z | BITMASK_EVEN) + 1 & BITMASK_ODD) | (z & BITMASK_EVEN),
+            D.NORTH: ZCurve(((self.z & self.EVENBITS) - 1 & self.EVENBITS) | (self.z & self.ODDBITS), self.depth),
+            D.SOUTH: ZCurve(((self.z | self.ODDBITS)  + 1 & self.EVENBITS) | (self.z & self.ODDBITS), self.depth),
+            D.WEST:  ZCurve(((self.z & self.ODDBITS)  - 1 & self.ODDBITS) | (self.z & self.EVENBITS), self.depth),
+            D.EAST:  ZCurve(((self.z | self.EVENBITS) + 1 & self.ODDBITS) | (self.z & self.EVENBITS), self.depth),
         }
 
-    def zPlusVec(z, dX=0, dY=0, w=None):
-        ''' adds two z values in 2D
+    def parent(self, depthOffset=1):
+        ''' returns the corresponding cell in the z-order curve of one less recursion
         '''
-        if w is None:
-            w = ZCurve.z(dX, dY)
-        # https://en.wikipedia.org/wiki/Z-order_curve#Coordinate_values adapted to 32bit
-        # faster than doing ZCurve.z(ZCurve.xy(z) + (dX,dY))
-        return (
-            ((z | BITMASK_EVEN) + (w & BITMASK_ODD) & BITMASK_ODD) |
-            ((z | BITMASK_ODD) + (w & BITMASK_EVEN) & BITMASK_EVEN)
-        )
+        z = self.z >> (2 * depthOffset)
+        depth = max(0, self.depth - depthOffset)
+        return ZCurve(z, depth)
 
-    def parent(z):
-        ''' returns the corresponding cell in the z-order curve of one level recursion less
+    def children(self, depthOffset=1):
+        ''' returns the corresponding cells in the z-order curve of deeper recurson
         '''
-        return z >> 2
-
-    def children(z):
-        ''' returns the corresponding cells in the z-order curve of one level recursion more
-        '''
-        z <<= 2
-        return [z, z + 1, z + 2, z + 3]
+        zBase = self.z << (2 * depthOffset)
+        numChildren = 4 ** depthOffset
+        return [ZCurve(z, self.depth + depthOffset) for z in range(zBase, zBase + numChildren)]
