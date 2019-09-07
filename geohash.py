@@ -9,6 +9,10 @@ class Geohash(object):
     Inspired by geohash.org; Ported implementation from https://developer-should-know.tumblr.com/post/87283491372/geohash-encoding-and-decoding-algorithm
     '''
 
+    NUMERIC = 'numeric'
+    BASE32 = 'base32'
+    BITSTRING = 'bitstring'
+
     LAT_RANGE = (-90.0, 90.0)
     LON_RANGE = (-180.0, 180.0)
 
@@ -35,6 +39,21 @@ class Geohash(object):
     def middle(valRange):
         return (valRange[0] + valRange[1]) / 2.0
 
+    def intToBitstring(val, precision):
+        ''' converts an LSB-first integer to a MSB-first bitstring
+        '''
+        result = ''
+        while val:
+            result += str(1 & val)
+            val >>= 1
+
+        # if the last bits are all zero, the loop stops too early; append missing zeros
+        missing = precision - len(result)
+        if missing:
+            result += ''.join(['0'] * missing)
+
+        return result
+
     def intToBase32(val):
         ''' convert an LSB-first integer to base32 encoding
         '''
@@ -56,12 +75,12 @@ class Geohash(object):
 
         return result
 
-    def base32ToInt(geohash):
+    def base32ToInt(string):
         ''' convert a base32 string to LSB-first integer
         '''
         bitsDecoded = 0
         result = 0
-        for char in geohash:
+        for char in string:
             base32CharIndex = BASE_32.index(char)
             for i in [4,3,2,1,0]: # 5 bits per BASE32 character, start with MSB
                 bit = (base32CharIndex & (1 << i)) >> i # extract bit
@@ -69,10 +88,6 @@ class Geohash(object):
                 result |= bit
                 bitsDecoded += 1
         return result
-
-    def encodeBase32(lat, lon, length):
-        hashNumeric = Geohash.encodeBits(lat, lon, length * 5)
-        return Geohash.intToBase32(hashNumeric)
 
     def encodeBits(lat, lon, precision):
         '''
@@ -96,10 +111,6 @@ class Geohash(object):
             bitsEncoded += 1
 
         return geohash
-
-    def encodeRangeBits(rangeMin, rangeMax):
-        # TODO: also support encoding of a range
-        pass
 
     def decodeBits(geohash, precision=None):
         lonRange = list(Geohash.LON_RANGE) # we modify the range, so make a copy
@@ -136,7 +147,25 @@ class Geohash(object):
 
         return Geohash.decodeBits(geohash, precision)
 
+    def encodePoint(lat, lon, precision, output=NUMERIC):
+        if output == Geohash.BASE32:
+            precision *= 5 # one char encodes 5 bit
+
+        hashNumeric = Geohash.encodeBits(lat, lon, precision)
+
+        if output == Geohash.BASE32:
+            return Geohash.intToBase32(hashNumeric)
+        if output == Geohash.BITSTRING:
+            return Geohash.intToBitstring(hashNumeric, precision)
+        else:
+            return hashNumeric
+
+    def encodeRange(xRange, yRange, format=NUMERIC):
+        # TODO
+        pass
+
 
 def test():
-    assert "u4pruydqqvj8" == Geohash.encodeBase32(57.64911, 10.40744, 12)
+    assert "u4pruydqqvj8" == Geohash.encodePoint(57.64911, 10.40744, 12, Geohash.BASE32)
     print(Geohash.decode("u4pruydqqvj8"))
+
