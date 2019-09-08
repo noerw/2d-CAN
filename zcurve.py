@@ -20,7 +20,7 @@ class ZCurve(object):
             A ZCurve can have `4**depth` elements
         '''
         if z > 4 ** depth - 1:
-            raise Exception('z-value %i does not exist on depth level %i' % (z, depth))
+            raise ValueError('z-value %i does not exist on depth level %i' % (z, depth))
 
         self.z = z
         self.depth = depth
@@ -32,7 +32,7 @@ class ZCurve(object):
         '''
         x, y = xy
         if x >= 2 ** depth or y >= 2 ** depth:
-            raise Exception('coordinate %s does not exist on depth level %i' % (xy, depth))
+            raise ValueError('coordinate %s does not exist on depth level %i' % (xy, depth))
 
         # interleave bits https://graphics.stanford.edu/~seander/bithacks.html#InterleaveTableObvious
         z = 0
@@ -43,35 +43,11 @@ class ZCurve(object):
 
     def fromBitstring(bitstring):
         if len(bitstring) % 2 != 0:
-            raise Exception('len(bitstring) must be multiple of 2!')
+            # TODO: we should be able to deal with "halfsplits"?
+            raise ValueError('len(bitstring) must be multiple of 2!')
         depth = int(len(bitstring) / 2)
         z = int(bitstring, base=2)
         return ZCurve(z, depth)
-
-    def __str__(self):
-        # encode as bitstring
-        res = ''
-        for i in range(self.depth * 2):
-            bit = (self.z & (1 << i)) >> i
-            res += str(bit)
-        return res[::-1] # reverse, MSB first
-
-    def __add__(self, other):
-        if type(other) is ZCurve:
-            if other.depth != self.depth:
-                deeper = other if self.depth < other.depth else self
-                higher = self  if self.depth < other.depth else other
-                return deeper + higher.children(deeper.depth - higher.depth)[0]
-
-            # FIXME: torus-style wrap-around fails
-            # https://en.wikipedia.org/wiki/Z-order_curve#Coordinate_values adapted to 32bit
-            z = (
-                ((self.z | self.EVENBITS) + (other.z & self.ODDBITS) & self.ODDBITS) |
-                ((self.z | self.ODDBITS) + (other.z & self.EVENBITS) & self.EVENBITS)
-            )
-            return ZCurve(z, self.depth)
-
-        raise Exception('addition for type %s not implemented' % type(other))
 
     def xy(self):
         ''' returns indices to the debruijn sequence
@@ -118,3 +94,61 @@ class ZCurve(object):
         zBase = self.z << (2 * depthOffset)
         numChildren = 4 ** depthOffset
         return [ZCurve(z, self.depth + depthOffset) for z in range(zBase, zBase + numChildren)]
+
+    def __str__(self):
+        # encode as bitstring
+        res = ''
+        for i in range(self.depth * 2):
+            bit = (self.z & (1 << i)) >> i
+            res += str(bit)
+        return res[::-1] # reverse, MSB first
+
+    def __add__(self, other):
+        self.ensureSameType(other)
+
+        if other.depth != self.depth:
+            deeper = other if self.depth < other.depth else self
+            higher = self  if self.depth < other.depth else other
+            return deeper + higher.children(deeper.depth - higher.depth)[0]
+
+        # FIXME: torus-style wrap-around fails
+        # https://en.wikipedia.org/wiki/Z-order_curve#Coordinate_values adapted to 32bit
+        z = (
+            ((self.z | self.EVENBITS) + (other.z & self.ODDBITS) & self.ODDBITS) |
+            ((self.z | self.ODDBITS) + (other.z & self.EVENBITS) & self.EVENBITS)
+        )
+        return ZCurve(z, self.depth)
+
+    def __contains__(self, other):
+        self.ensureSameType(other)
+        if self.depth > other.depth:
+            return False
+        elif self.depth < other.depth:
+            return self == other.parent(other.depth - self.depth)
+        else:
+            return self == other
+
+    def __lt__(self, other):
+        # compares the "area" that this instance covers
+        self.ensureSameType(other)
+        return self.depth > other.depth
+
+    def __gt__(self, other):
+        self.ensureSameType(other)
+        return self.depth < other.depth
+
+    def __le__(self, other):
+        self.ensureSameType(other)
+        return self.depth <= other.depth
+
+    def __ge__(self, other):
+        self.ensureSameType(other)
+        return self.depth >= other.depth
+
+    def __eq__(self, other):
+        self.ensureSameType(other)
+        return self.z == other.z and self.depth == other.depth
+
+    def ensureSameType(self, other):
+        if type(other) != ZCurve:
+            raise TypeError('cant compare ZCurve with %s', type(other))
