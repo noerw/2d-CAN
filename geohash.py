@@ -9,7 +9,8 @@ class Geohash(object):
     Inspired by geohash.org; Ported implementation from https://developer-should-know.tumblr.com/post/87283491372/geohash-encoding-and-decoding-algorithm
     '''
 
-    NUMERIC = 'numeric'
+    NUMERIC = 'numeric_lsb'
+    NUMERIC_MSB = 'numeric_msb'
     BASE32 = 'base32'
     BITSTRING = 'bitstring'
 
@@ -89,7 +90,7 @@ class Geohash(object):
                 bitsDecoded += 1
         return result
 
-    def encodeBits(lat, lon, precision):
+    def encodeBits(lat, lon, precision, lsb=True):
         '''
         encodes a coordinate pair into `precision` interleaved bits
         returns a LSB-first integer.
@@ -106,8 +107,11 @@ class Geohash(object):
             else:
                 bit = Geohash.divideRangeByValue(lat, latRange)
 
-            # geohash = (geohash << 1) | bit # MSB first
-            geohash |= bit << bitsEncoded  # LSB first
+            if lsb:
+                geohash |= bit << bitsEncoded  # LSB first
+            else:
+                geohash = (geohash << 1) | bit # MSB first
+
             bitsEncoded += 1
 
         return geohash
@@ -151,11 +155,14 @@ class Geohash(object):
         if output == Geohash.BASE32:
             precision *= 5 # one char encodes 5 bit
 
-        hashNumeric = Geohash.encodeBits(lat, lon, precision)
+        if output == Geohash.NUMERIC_MSB:
+            hashNumeric = Geohash.encodeBits(lat, lon, precision, lsb=False)
+        else:
+            hashNumeric = Geohash.encodeBits(lat, lon, precision)
 
         if output == Geohash.BASE32:
             return Geohash.intToBase32(hashNumeric)
-        if output == Geohash.BITSTRING:
+        elif output == Geohash.BITSTRING:
             return Geohash.intToBitstring(hashNumeric, precision)
         else:
             return hashNumeric
