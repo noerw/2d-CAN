@@ -1,4 +1,5 @@
 from direction import D
+from geohash import Geohash
 
 class ZCurve(object):
     '''
@@ -49,6 +50,10 @@ class ZCurve(object):
         z = int(bitstring, base=2)
         return ZCurve(z, depth)
 
+    def fromLatLon(lat, lon, depth):
+        z = Geohash.encodePoint(lat, lon, depth * 2, Geohash.NUMERIC_MSB)
+        return ZCurve(z, depth)
+
     def xy(self):
         ''' returns indices to the debruijn sequence
         '''
@@ -68,6 +73,30 @@ class ZCurve(object):
         xDebruijn = self.z & self.ODDBITS
         yDebruijn = self.z & self.EVENBITS
         return xDebruijn, yDebruijn
+
+    def region(self, minXy=None, maxXy=None):
+        '''
+        returns the covered region as `((minX, minY), (maxX, maxY))` tuple
+        scaled to the `minXy` and `maxXy` range
+        '''
+        minXy = minXy or (-180, -90)
+        maxXy = maxXy or (180, 90)
+
+        if self.depth == 0:
+            return minXy, maxXy
+
+        x, y = self.xy()
+        numY = 2 ** self.depth
+        numX = numY / 2 if self.halfsplit else numY
+
+        rangeX = maxXy[0] - minXy[0]
+        rangeY = maxXy[1] - minXy[1]
+        minX = minXy[0] + x * rangeX / numX
+        minY = minXy[1] + y * rangeY / numY
+        maxX = minX + rangeX / numX
+        maxY = minY + rangeY / numY
+
+        return (minX, minY), (maxX, maxY)
 
     def neighbours(self):
         # FIXME: torus-style wrap-around gives incorrect results for
