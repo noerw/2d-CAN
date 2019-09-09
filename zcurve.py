@@ -20,6 +20,13 @@ class ZCurve(object):
         `depth`  is the recursion depth of the curve.
             A ZCurve can have `4**depth` elements
         '''
+        # shorthand to construct from bitstring
+        if type(z) == str:
+            _ = ZCurve.fromBitstring(z)
+            self.z = _.z
+            self.depth = _.depth
+            return
+
         if z > 4 ** depth - 1:
             raise ValueError('z-value %i does not exist on depth level %i' % (z, depth))
 
