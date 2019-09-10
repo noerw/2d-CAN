@@ -13,18 +13,40 @@ class ZCurve(object):
 
     z = 0
     depth = 0
+    halfsplit = False
 
-    def __init__(self, z=0, depth=1):
+    def __init__(self, z=0, depth=1, halfsplit=False):
         '''
         `z`      is the position on the z-order curve.
+
         `depth`  is the recursion depth of the curve.
             A ZCurve can have `4**depth` elements
+
+        `halfsplit` indicates that this instance covers double the area on the X
+            axis (itself + neighbouring cell), due to an uneven number of splits
+
+        TODO: should we implement the halfsplit like this? we might run into uglyness
+            when calculating neighbours, children...
+            It's basically an depth offset for the X axis, so treat it numerically?
+
+        TODO: implement halfsplit for all the operators:
+            - [x] __str__
+            - [x] __eq__
+            - [ ] __gt__, lt, ge, le
+            - [ ] __add__
+            - [ ] __contains__
+            - [ ] parent
+            - [ ] children
+            - [ ] neighbours
+            - [ ] region
         '''
+
         # shorthand to construct from bitstring
         if type(z) == str:
             _ = ZCurve.fromBitstring(z)
             self.z = _.z
             self.depth = _.depth
+            self.halfsplit = _.halfsplit
             return
 
         if z > 4 ** depth - 1:
@@ -32,6 +54,7 @@ class ZCurve(object):
 
         self.z = z
         self.depth = depth
+        self.halfsplit = halfsplit
 
     def fromXY(xy, depth):
         '''
@@ -50,16 +73,19 @@ class ZCurve(object):
         return ZCurve(z, depth)
 
     def fromBitstring(bitstring):
-        if len(bitstring) % 2 != 0:
-            # TODO: we should be able to deal with "halfsplits"?
-            raise ValueError('len(bitstring) must be multiple of 2!')
+        # uneven number of bits means we have a halfsplit:
+        # set last split on X to 0, but we treat it as covering both 0 and 1
+        halfsplit = len(bitstring) % 2 != 0
+        if halfsplit:
+            bitstring += '0'
+
         depth = int(len(bitstring) / 2)
         z = int(bitstring, base=2)
-        return ZCurve(z, depth)
+        return ZCurve(z, depth, halfsplit)
 
-    def fromLatLon(lat, lon, depth):
+    def fromLatLon(lat, lon, depth, halfsplit=False):
         z = Geohash.encodePoint(lat, lon, depth * 2, Geohash.NUMERIC_MSB)
-        return ZCurve(z, depth)
+        return ZCurve(z, depth, halfsplit)
 
     def xy(self):
         ''' returns indices to the debruijn sequence
@@ -131,7 +157,8 @@ class ZCurve(object):
     def __str__(self):
         # encode as bitstring
         res = ''
-        for i in range(self.depth * 2):
+        skipLsb = 1 if self.halfsplit else 0 # don't encode the last X-axis split
+        for i in range(skipLsb, self.depth * 2):
             bit = (self.z & (1 << i)) >> i
             res += str(bit)
         return res[::-1] # reverse, MSB first
@@ -156,6 +183,8 @@ class ZCurve(object):
         if self.depth > other.depth:
             return False
         elif self.depth < other.depth:
+            # we're larger, but we need to check overlap
+            # TODO: self.halfsplit
             return self == other.parent(other.depth - self.depth)
         else:
             return self == other
@@ -179,7 +208,11 @@ class ZCurve(object):
 
     def __eq__(self, other):
         self.ensureSameType(other)
-        return self.z == other.z and self.depth == other.depth
+        return (
+            self.z == other.z and
+            self.depth == other.depth and
+            self.halfsplit == other.halfsplit
+        )
 
     def ensureSameType(self, other):
         if type(other) != ZCurve:
