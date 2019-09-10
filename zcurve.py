@@ -106,15 +106,12 @@ class ZCurve(object):
         return (minX, minY), (maxX, maxY)
 
     def neighbours(self):
-        # FIXME: torus-style wrap-around gives incorrect results for
-        #   `self.depth != int.bit_length(self.z | self.BITMASK_EVEN)` !
-
         # https://en.wikipedia.org/wiki/Z-order_curve#Coordinate_values adapted to 32bit
         return {
-            D.NORTH: ZCurve(((self.z & self.EVENBITS) - 1 & self.EVENBITS) | (self.z & self.ODDBITS), self.depth),
-            D.SOUTH: ZCurve(((self.z | self.ODDBITS)  + 1 & self.EVENBITS) | (self.z & self.ODDBITS), self.depth),
-            D.WEST:  ZCurve(((self.z & self.ODDBITS)  - 1 & self.ODDBITS) | (self.z & self.EVENBITS), self.depth),
-            D.EAST:  ZCurve(((self.z | self.EVENBITS) + 1 & self.ODDBITS) | (self.z & self.EVENBITS), self.depth),
+            D.NORTH: ZCurve((((self.z & self.EVENBITS) - 1 & self.EVENBITS) | (self.z & self.ODDBITS)) % 4 ** self.depth, self.depth),
+            D.SOUTH: ZCurve((((self.z | self.ODDBITS)  + 1 & self.EVENBITS) | (self.z & self.ODDBITS)) % 4 ** self.depth, self.depth),
+            D.WEST:  ZCurve((((self.z & self.ODDBITS)  - 1 & self.ODDBITS) | (self.z & self.EVENBITS)) % 4 ** self.depth, self.depth),
+            D.EAST:  ZCurve((((self.z | self.EVENBITS) + 1 & self.ODDBITS) | (self.z & self.EVENBITS)) % 4 ** self.depth, self.depth),
         }
 
     def parent(self, depthOffset=1):
@@ -147,12 +144,11 @@ class ZCurve(object):
             higher = self  if self.depth < other.depth else other
             return deeper + higher.children(deeper.depth - higher.depth)[0]
 
-        # FIXME: torus-style wrap-around fails
         # https://en.wikipedia.org/wiki/Z-order_curve#Coordinate_values adapted to 32bit
         z = (
             ((self.z | self.EVENBITS) + (other.z & self.ODDBITS) & self.ODDBITS) |
             ((self.z | self.ODDBITS) + (other.z & self.EVENBITS) & self.EVENBITS)
-        )
+        ) % 4 ** self.depth
         return ZCurve(z, self.depth)
 
     def __contains__(self, other):
