@@ -1,8 +1,8 @@
 from __future__ import division
+import gevent
 from gevent import socket
 from functools import partial
 from hashlib import md5
-import json
 from geohash32 import Geohash
 
 
@@ -19,6 +19,13 @@ class Node(object):
         self.neighbours = {}
         self.same_id = {}
         self.location = location
+        self.lon_bin = ""
+        self.lat_bin = ""
+        for i in self.id[::2]:
+            self.lon_bin += i
+
+        for i in self.id[1::2]:
+            self.lat_bin += i
 
     def __str__(self):
         return "node:%s and id: %s" % (self.port, self.id)
@@ -38,47 +45,72 @@ class Node(object):
     def hash_key(self, key):
         return md5(key.encode('utf-8')).hexdigest()
 
-    def refine_id(self):
-        geohash32 = Geohash()
-        done = False
-        to_delete = []
+    def get_possible_neighbours(self, id):
+        lon = ""
+        lat = ""
+        up = ""
+        down = ""
+        left = ""
+        right = ""
+        left_neighbour = ""
+        right_neighbour = ""
+        up_neighbour = ""
+        down_neighbour = ""
+        poss_neigh = {}
 
-        if self.same_id.__len__() > 0:
-            if self.same_id.__len__() == 1:
-                for port in self.same_id:
-                    same_id = self.same_id[port]
-                    if len(same_id) == len(self.id):
-                        print("Splitted ID, new ID is now %s" % self.id)
-                        self.sendto(("localhost", port), "SPLIT %s" % self.id)
-                        self.same_id = {}
-                        done = True
-                        break
+        for i in id[::2]:
+            lon += i
 
-            if not done:
-                self.id = geohash32.encodeBinary(self.location[0], self.location[1], len(self.id) + 2)
-                print("Refined ID, new ID is now %s" % self.id)
+        for i in id[1::2]:
+            lat += i
 
-        for port in self.same_id:
-            same_id = self.same_id[port]
-            if len(same_id) == len(self.id) and same_id == self.id:
-                self.same_id = {}
-                self.id = geohash32.encodeBinary(self.location[0], self.location[1], len(self.id) + 2)
-                print("Splitted ID, new ID is now %s" % self.id)
-                self.sendto(("localhost", port), "SPLIT %s" % self.id)
-                done = True
-                break
+        lon_int = int(lon, 2)
+        lat_int = int(lat, 2)
 
-            elif len(same_id) >= len(self.id) and not same_id[:len(self.id)] == self.same_id:
-                to_delete.append(port)
+        if lon == "111111" or lon == "000000":
+            if lon == "111111":
+                up = "{0:06b}".format(lon_int - 1)
+                down = "000000"
 
-        for port in to_delete:
-            del self.same_id[port]
+            if lon == "000000":
+                down = "{0:06b}".format(lon_int + 1)
+                up = "111111"
+        else:
+            up = "{0:06b}".format(lon_int - 1)
+            down = "{0:06b}".format(lon_int + 1)
 
-        if not done and self.same_id.__len__() > 0:
-            self.refine_id()
+        if lat == "111111" or lat == "000000":
+            if lat == "111111":
+                left = "{0:06b}".format(lat_int - 1)
+                right = "000000"
 
-    def split(self):
-        pass
+            if lat == "000000":
+                right = "{0:06b}".format(lat_int + 1)
+                left = "111111"
+        else:
+            left = "{0:06b}".format(lat_int - 1)
+            right = "{0:06b}".format(lat_int + 1)
+
+        for i in range(6):
+            left_neighbour += lon[i]
+            left_neighbour += left[i]
+
+            right_neighbour += lon[i]
+            right_neighbour += right[i]
+
+        for i in range(6):
+            up_neighbour += lat[i]
+            up_neighbour += up[i]
+
+            down_neighbour += lat[i]
+            down_neighbour += down[i]
+
+        poss_neigh[left] = left_neighbour
+        poss_neigh[right] = right_neighbour
+        poss_neigh[up] = up_neighbour
+        poss_neigh[down] = down_neighbour
+
+        return poss_neigh
 
     def sendto(self, address, message):
         if address:
@@ -103,8 +135,6 @@ class Node(object):
     def query(self, query, sender=None):
         respond = partial(self.sendto, sender)
 
-        geohash32 = Geohash()
-
         if sender:
             print("Received \"%s\" from %s." % (query, sender))
 
@@ -112,25 +142,45 @@ class Node(object):
             # Receive join request from new node
             if query.startswith("JOIN"):
                 new_id = query[5:]
-                split = False
-                # Check if own id is = new id => Need for split
-                if len(self.id) == len(new_id) and self.id == new_id:
-                    self.id = geohash32.encodeBinary(self.location[0], self.location[1], len(self.id) + 2)
-                    print("Splitted ID, new ID is now %s" % self.id)
-                    self.sendto(sender, "SPLIT %s" % self.id)
-                    split = True
+                new_lon = ""
+                new_lat = ""
+                direction = ""
 
-                # Check through neighbours if id needs to be refined
+                for i in new_id[::2]:
+                    new_lon += i
+
+                for i in new_id[1::2]:
+                    new_lat += i
+
+                if int(self.lon_bin, 2) ^ int(new_lon, 2) < int(self.lat_bin, 2) ^ int(new_lat, 2):
+                    xor_direction = "lat"
                 else:
-                    for port in self.neighbours:
-                        id = self.neighbours[port]
-                        if len(id) >= len(new_id) and id[:len(new_id)] == new_id:
-                            self.sendto(("localhost", port), "NEW_NODE %s" % sender)
+                    xor_direction = "lon"
 
-                # Check if own prefix is = new id
-                if new_id == self.id[:len(new_id)] and not split:
-                    print("SEND REFINE")
-                    self.sendto(sender, "REFINE %s" % self.id)
+                if xor_direction == "lat":
+                    if int(self.lat_bin, 2) > int(new_lat, 2):
+                        direction = "right"
+                    else:
+                        direction = "left"
+                else:
+                    if int(self.lon_bin, 2) > int(new_lon, 2):
+                        direction = "up"
+                    else:
+                        direction = "down"
+
+                xor = int(self.id, 2) ^ int(new_id, 2)
+
+                possible_neighbours = self.get_possible_neighbours(new_id)
+
+                # possibleNeighbours;
+                if self.neighbours.__len__() > 0:
+                    for neigh_direction in possible_neighbours:
+                        poss_neigh_id = possible_neighbours[neigh_direction]
+                        for neighbour in self.neighbours:
+                            neigh_id = self.neighbours[neighbour]
+                            pass
+                else:
+                    self.sendto(sender, "SET_NEIGHBOUR %s" % self.id + direction)
 
             # Ask new node for
             elif query.startswith("NEW_NODE"):
@@ -141,24 +191,7 @@ class Node(object):
             elif query.startswith("SEND_ID"):
                 self.sendto(sender, "JOIN %s" % self.id)
 
-            elif query.startswith("REFINE"):
-                node_port = sender[1]
-                node_id = query[query.find(' ') + 1:]
-                self.same_id[node_port] = node_id
-                self.refine_id()
-
-            elif query.startswith("SPLIT"):
-                node_id = query[6:]
-                self.id = geohash32.encodeBinary(self.location[0], self.location[1], len(self.id) + 2)
-                print("Splitted ID, new ID is now %s" % self.id)
-
-                if node_id == self.id:
-                    self.id = geohash32.encodeBinary(self.location[0], self.location[1], len(self.id) + 2)
-                    self.sendto(sender, "SPLIT %s" % self.id)
-
             elif query.startswith("SET_NEIGHBOURS"):
-                # Set neighbours
-                # Inform neighbours about existance
                 pass
 
             elif query.startswith("STATE"):
@@ -166,10 +199,7 @@ class Node(object):
                 print("right: %s" % str(self.right_address))
                 print("hash: %s" % self.hash)
                 print("port: %s" % self.port)
-
-            elif query.startswith("SET_NEW_ID"):
-                # Set a new id when a new node joins with same id
-                pass
+                print("id: %s" % self.id)
 
             elif query.startswith("GET"):
                 key = query.split()[1]
