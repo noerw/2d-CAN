@@ -16,7 +16,12 @@ class Node(object):
         self.hash = {}
         self.left_address = None
         self.right_address = None
-        self.neighbours = {}
+        self.neighbours = {
+            "left": "",
+            "right": "",
+            "up": "",
+            "down": ""
+        }
         self.same_id = {}
         self.location = location
         self.lon_bin = ""
@@ -105,12 +110,49 @@ class Node(object):
             down_neighbour += lat[i]
             down_neighbour += down[i]
 
-        poss_neigh[left] = left_neighbour
-        poss_neigh[right] = right_neighbour
-        poss_neigh[up] = up_neighbour
-        poss_neigh[down] = down_neighbour
+        poss_neigh["left"] = left_neighbour
+        poss_neigh["right"] = right_neighbour
+        poss_neigh["up"] = up_neighbour
+        poss_neigh["down"] = down_neighbour
 
         return poss_neigh
+
+    def check_direction(self, new_id, own_id):
+        new_lon = ""
+        new_lat = ""
+        own_lon = ""
+        own_lat = ""
+        direction = ""
+
+        for i in new_id[::2]:
+            new_lon += i
+
+        for i in new_id[1::2]:
+            new_lat += i
+
+        for i in own_id[::2]:
+            own_lon += i
+
+        for i in own_id[1::2]:
+            own_lat += i
+
+        if int(own_lon, 2) ^ int(new_lon, 2) < int(own_lat, 2) ^ int(new_lat, 2):
+            xor_direction = "lat"
+        else:
+            xor_direction = "lon"
+
+        if xor_direction == "lat":
+            if int(own_lat, 2) > int(new_lat, 2):
+                direction = "right"
+            else:
+                direction = "left"
+        else:
+            if int(own_lon, 2) > int(new_lon, 2):
+                direction = "up"
+            else:
+                direction = "down"
+
+        return direction
 
     def sendto(self, address, message):
         if address:
@@ -142,61 +184,178 @@ class Node(object):
             # Receive join request from new node
             if query.startswith("JOIN"):
                 new_id = query[5:]
-                new_lon = ""
-                new_lat = ""
-                direction = ""
+                direction = self.check_direction(new_id, self.id)
 
-                for i in new_id[::2]:
-                    new_lon += i
+                possible_neighbours = self.get_possible_neighbours(new_id)
 
-                for i in new_id[1::2]:
-                    new_lat += i
+                up_found = ""
+                down_found = ""
+                right_found = ""
+                left_found = ""
 
-                if int(self.lon_bin, 2) ^ int(new_lon, 2) < int(self.lat_bin, 2) ^ int(new_lat, 2):
-                    xor_direction = "lat"
-                else:
-                    xor_direction = "lon"
+                # possibleNeighbours;
+                for neigh_direction in self.neighbours:
+                    neigh_id = self.neighbours[neigh_direction]
+                    if neigh_id != "":
+                        for poss_neigh_direction in possible_neighbours:
+                            poss_neigh_id = possible_neighbours[poss_neigh_direction]
+                            if poss_neigh_direction == "up":
+                                if up_found == "":
+                                    up_found = neigh_id + "up"
+                                elif int(neigh_id[:12], 2) ^ int(poss_neigh_id, 2) < int(up_found[:12], 2) ^ int(
+                                        poss_neigh_id, 2):
+                                    up_found = neigh_id + "up"
+                            if poss_neigh_direction == "down":
+                                if down_found == "":
+                                    down_found = neigh_id + "down"
+                                elif int(neigh_id[:12], 2) ^ int(poss_neigh_id, 2) < int(down_found[:12], 2) ^ int(
+                                        poss_neigh_id, 2):
+                                    down_found = neigh_id + "down"
+                            if poss_neigh_direction == "left":
+                                if left_found == "":
+                                    left_found = neigh_id + "left"
+                                elif int(neigh_id[:12], 2) ^ int(poss_neigh_id, 2) < int(left_found[:12], 2) ^ int(
+                                        poss_neigh_id, 2):
+                                    left_found = neigh_id + "left"
+                            if poss_neigh_direction == "right":
+                                if right_found == "":
+                                    right_found = neigh_id + "right"
+                                elif int(neigh_id[:12], 2) ^ int(poss_neigh_id, 2) < int(right_found[:12], 2) ^ int(
+                                        poss_neigh_id, 2):
+                                    right_found = neigh_id + "right"
 
-                if xor_direction == "lat":
-                    if int(self.lat_bin, 2) > int(new_lat, 2):
-                        direction = "right"
-                    else:
-                        direction = "left"
-                else:
-                    if int(self.lon_bin, 2) > int(new_lon, 2):
-                        direction = "up"
-                    else:
-                        direction = "down"
+                if direction == "up":
+                    if up_found == "":
+                        up_found = self.id
+                    elif int(self.id, 2) ^ int(possible_neighbours["up"], 2) < int(up_found[:12], 2) ^ int(
+                            possible_neighbours["up"], 2):
+                        up_found = self.id
+
+                if direction == "down":
+                    if down_found == "":
+                        down_found = self.id
+                    elif int(self.id, 2) ^ int(possible_neighbours["down"], 2) < int(down_found[:12], 2) ^ int(
+                            possible_neighbours["down"], 2):
+                        down_found = self.id
+
+                if direction == "left":
+                    if left_found == "":
+                        left_found = self.id
+                    elif int(self.id, 2) ^ int(possible_neighbours["left"], 2) < int(left_found[:12], 2) ^ int(
+                            possible_neighbours["left"], 2):
+                        left_found = self.id
+
+                if direction == "right":
+                    if right_found == "":
+                        right_found = self.id
+                    elif int(self.id, 2) ^ int(possible_neighbours["right"], 2) < int(right_found[:12], 2) ^ int(
+                            possible_neighbours["right"], 2):
+                        right_found = self.id
+
+                if up_found != "" and up_found != self.id:
+                    self.sendto(("localhost", int(up_found[12:17])), "CHECK_NEIGHBOUR" + str(sender[1]) + up_found)
+                elif up_found == self.id:
+                    self.sendto(sender, "UPDATE_NEIGHBOUR_UP" + self.id)
+
+                if down_found != "" and down_found != self.id:
+                    self.sendto(("localhost", int(down_found[12:17])), "CHECK_NEIGHBOUR" + str(sender[1]) + down_found)
+                elif down_found == self.id:
+                    self.sendto(sender, "UPDATE_NEIGHBOUR_DOWN" + self.id)
+
+                if left_found != "" and left_found != self.id:
+                    self.sendto(("localhost", int(left_found[12:17])), "CHECK_NEIGHBOUR" + str(sender[1]) + left_found)
+                elif left_found == self.id:
+                    self.sendto(sender, "UPDATE_NEIGHBOUR_LEFT" + self.id)
+
+                if right_found != "" and right_found != self.id:
+                    self.sendto(("localhost", int(right_found[12:17])), "CHECK_NEIGHBOUR" + str(sender[1]) + right_found)
+                elif right_found == self.id:
+                    self.sendto(sender, "UPDATE_NEIGHBOUR_RIGHT" + self.id)
+
+
+            # Update with new neighbour
+            elif query.startswith("UPDATE_NEIGHBOUR"):
+                direction = query[17:-12].lower()
+                calc_direction = self.check_direction(query[-12:], self.id)
+
+                if (calc_direction == "up" and direction == "down") or (
+                        calc_direction == "down" and direction == "up") or (
+                        calc_direction == "left" and direction == "right") or (
+                        calc_direction == "right" and direction == "left"):
+
+                    if self.neighbours[direction] != "":
+                        self.sendto(("localhost", int(self.neighbours[direction][-5:])),
+                                    "DELETE_ME" + self.id)
+
+                    self.neighbours[direction] = query[-12:] + str(sender[1])
+                    print(str(self.neighbours))
+
+                    answer = ""
+                    if direction == "left":
+                        answer = "right"
+
+                    if direction == "right":
+                        answer = "left"
+
+                    if direction == "up":
+                        answer = "down"
+
+                    if direction == "down":
+                        answer = "up"
+
+                    self.sendto(sender, "CONFIRM_UPDATE %s" % answer + self.id)
+
+            # Get answer from new neighbour
+            elif query.startswith("CONFIRM_UPDATE"):
+                direction = query[15:-12].lower()
+
+                if self.neighbours[direction] != "":
+                    self.sendto(("localhost", int(self.neighbours[direction][-5:])),
+                                "DELETE_ME" + self.id)
+
+                self.neighbours[direction] = query[-12:] + str(sender[1])
+                # TODO: Send own hash and divide
+                print(str(self.neighbours))
+
+            # Check if own node is nearest to new node
+            elif query.startswith("CHECK_NEIGHBOUR"):
+                new_id = query[20:32]
+                direction = query[37:]
 
                 xor = int(self.id, 2) ^ int(new_id, 2)
 
                 possible_neighbours = self.get_possible_neighbours(new_id)
 
+                found = ""
                 # possibleNeighbours;
-                if self.neighbours.__len__() > 0:
-                    for neigh_direction in possible_neighbours:
-                        poss_neigh_id = possible_neighbours[neigh_direction]
-                        for neighbour in self.neighbours:
-                            neigh_id = self.neighbours[neighbour]
-                            pass
-                else:
-                    self.sendto(sender, "SET_NEIGHBOUR %s" % self.id + direction)
+                for neigh_direction in self.neighbours:
+                    neigh_id = self.neighbours[neigh_direction]
+                    if neigh_id != "":
+                        if found == "":
+                            found = neigh_id + direction
+                        else:
+                            if int(neigh_id[:12], 2) ^ int(possible_neighbours[direction], 2) < int(found[:12], 2) ^ int(possible_neighbours[direction], 2):
+                                found = neigh_id + direction
 
-            # Ask new node for
-            elif query.startswith("NEW_NODE"):
-                new_port = query[9:]
-                new_port = new_port[new_port.find(',') + 2:sender.find(')')]
-                self.sendto(("localhost", new_port), "SEND_ID")
+                if found == "":
+                    found = self.id
+                elif int(self.id, 2) ^ int(possible_neighbours[direction], 2) < int(found[:12], 2) ^ int(
+                        possible_neighbours[direction], 2):
+                    found = self.id
 
-            elif query.startswith("SEND_ID"):
-                self.sendto(sender, "JOIN %s" % self.id)
+                if found != "" and found != self.id:
+                    self.sendto(("localhost", int(found[12:17])), "CHECK_NEIGHBOUR" + query[15:20] + found)
+                elif found == self.id:
+                    self.sendto(("localhost", int(query[15:20])), "UPDATE_NEIGHBOUR_" + direction.upper() + self.id)
 
-            elif query.startswith("SET_NEIGHBOURS"):
-                pass
+            elif query.startswith("DELETE_ME"):
+                for direction in self.neighbours:
+                    if self.neighbours[direction] == query[-12:] + str(sender[1]):
+                        self.neighbours[direction] = ""
+                print(str(self.neighbours))
 
             elif query.startswith("STATE"):
-                print("left: %s" % str(self.left_address))
-                print("right: %s" % str(self.right_address))
+                print("neighbours: %s" % str(self.neighbours))
                 print("hash: %s" % self.hash)
                 print("port: %s" % self.port)
                 print("id: %s" % self.id)
